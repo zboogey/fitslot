@@ -1,6 +1,5 @@
 
 
--- Users table
 CREATE TABLE IF NOT EXISTS users (
     id SERIAL PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
@@ -12,7 +11,6 @@ CREATE TABLE IF NOT EXISTS users (
 
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
 
--- Gyms table
 CREATE TABLE IF NOT EXISTS gyms (
     id SERIAL PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
@@ -20,7 +18,6 @@ CREATE TABLE IF NOT EXISTS gyms (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Time slots table
 CREATE TABLE IF NOT EXISTS time_slots (
     id SERIAL PRIMARY KEY,
     gym_id INTEGER NOT NULL REFERENCES gyms(id) ON DELETE CASCADE,
@@ -35,7 +32,6 @@ CREATE TABLE IF NOT EXISTS time_slots (
 CREATE INDEX IF NOT EXISTS idx_time_slots_gym_id ON time_slots(gym_id);
 CREATE INDEX IF NOT EXISTS idx_time_slots_start_time ON time_slots(start_time);
 
--- Bookings table
 CREATE TABLE IF NOT EXISTS bookings (
     id SERIAL PRIMARY KEY,
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
