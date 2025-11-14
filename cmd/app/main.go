@@ -9,28 +9,24 @@ import (
 )
 
 func main() {
-	// Load configuration from environment variables
+
 	cfg, err := config.Load()
 	if err != nil {
 		log.Fatalf("Failed to load config: %v", err)
 	}
 
-	// Connect to database
 	database, err := db.Connect(cfg.DatabaseURL)
 	if err != nil {
 		log.Fatalf("Failed to connect to database: %v", err)
 	}
 	defer database.Close()
 
-	// Run migrations (create tables if they don't exist)
 	if err := db.RunMigrations(database); err != nil {
 		log.Fatalf("Failed to run migrations: %v", err)
 	}
 
-	// Create and start the HTTP server
 	srv := server.New(database, cfg)
 	if err := srv.Start(cfg.Port); err != nil {
 		log.Fatalf("Failed to start server: %v", err)
 	}
 }
-
