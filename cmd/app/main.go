@@ -32,9 +32,12 @@ func main() {
 	}
 	
 	emailService := email.New(
-		cfg.SendGridAPIKey,
 		cfg.EmailFrom,
 		cfg.EmailFromName,
+		cfg.SMTPHost,
+		cfg.SMTPPort,
+		cfg.SMTPUser,
+		cfg.SMTPPass,
 		cfg.RedisAddr,
 	)
 	defer emailService.Close()
