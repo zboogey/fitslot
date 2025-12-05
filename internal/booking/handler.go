@@ -2,12 +2,16 @@ package booking
 
 import (
 	"errors"
+	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"time"
 
 	"fitslot/internal/auth"
+	"fitslot/internal/email"
 	"fitslot/internal/gym"
+	"fitslot/internal/user"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jmoiron/sqlx"
@@ -21,14 +25,18 @@ var (
 )
 
 type Handler struct {
-	repo    *Repository
-	gymRepo *gym.Repository
+	repo     *Repository
+	gymRepo  *gym.Repository
+	userRepo *user.Repository
+	email    *email.Service
 }
 
-func NewHandler(db *sqlx.DB) *Handler {
+func NewHandler(db *sqlx.DB, emailService *email.Service) *Handler {
 	return &Handler{
-		repo:    NewRepository(db),
-		gymRepo: gym.NewRepository(db),
+		repo:     NewRepository(db),
+		gymRepo:  gym.NewRepository(db),
+		userRepo: user.NewRepository(db),
+		email:    emailService,
 	}
 }
 
@@ -85,6 +93,27 @@ func (h *Handler) BookSlot(c *gin.Context) {
 		return
 	}
 
+	go func() {
+		user, err := h.userRepo.FindByID(userID)
+		if err != nil {
+			log.Printf("Failed to get user details for email: %v", err)
+			return
+		}
+
+		details := fmt.Sprintf("Gym slot at %s", slot.StartTime.Format("3:04 PM"))
+		err = h.email.SendBookingConfirmation(
+			c.Request.Context(),
+			user.Email,
+			user.Name,
+			"Gym Slot",
+			details,
+			slot.StartTime,
+		)
+		if err != nil {
+			log.Printf("Failed to send booking confirmation email: %v", err)
+		}
+	}()
+
 	c.JSON(http.StatusCreated, booking)
 }
 
@@ -113,6 +142,11 @@ func (h *Handler) CancelBooking(c *gin.Context) {
 		return
 	}
 
+	slot, err := h.gymRepo.GetTimeSlotByID(booking.TimeSlotID)
+	if err != nil {
+		log.Printf("Failed to get slot details: %v", err)
+	}
+
 	err = h.repo.CancelBooking(bookingID)
 	if err != nil {
 		if err == ErrBookingNotFoundOrAlreadyCancelled {
@@ -122,6 +156,30 @@ func (h *Handler) CancelBooking(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to cancel booking"})
 		return
 	}
+
+	go func() {
+		user, err := h.userRepo.FindByID(userID)
+		if err != nil {
+			log.Printf("Failed to get user details for email: %v", err)
+			return
+		}
+
+		details := "Your gym slot booking"
+		if slot != nil {
+			details = fmt.Sprintf("Gym slot at %s", slot.StartTime.Format("3:04 PM"))
+		}
+
+		err = h.email.SendCancellation(
+			c.Request.Context(),
+			user.Email,
+			user.Name,
+			"Gym Slot",
+			details,
+		)
+		if err != nil {
+			log.Printf("Failed to send cancellation email: %v", err)
+		}
+	}()
 
 	c.JSON(http.StatusOK, gin.H{"message": "Booking cancelled successfully"})
 }
