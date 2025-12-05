@@ -50,15 +50,22 @@ func (h *Handler) Register(c *gin.Context) {
 		return
 	}
 
-	token, err := auth.GenerateToken(user.ID, user.Email, user.Role, h.jwtSecret)
+	accessToken, refreshToken, err := auth.GenerateTokens(
+		user.ID,
+		user.Email,
+		user.Role,
+		h.jwtSecret,
+		h.jwtSecret,
+	)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate token"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate tokens"})
 		return
 	}
 
 	c.JSON(http.StatusCreated, LoginResponse{
-		Token: token,
-		User:  *user,
+		AccessToken:  accessToken,
+		RefreshToken: refreshToken,
+		User:         *user,
 	})
 }
 
@@ -80,15 +87,22 @@ func (h *Handler) Login(c *gin.Context) {
 		return
 	}
 
-	token, err := auth.GenerateToken(user.ID, user.Email, user.Role, h.jwtSecret)
+	accessToken, refreshToken, err := auth.GenerateTokens(
+		user.ID,
+		user.Email,
+		user.Role,
+		h.jwtSecret,
+		h.jwtSecret,
+	)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate token"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate tokens"})
 		return
 	}
 
 	c.JSON(http.StatusOK, LoginResponse{
-		Token: token,
-		User:  *user,
+		AccessToken:  accessToken,
+		RefreshToken: refreshToken,
+		User:         *user,
 	})
 }
 
@@ -106,4 +120,36 @@ func (h *Handler) GetMe(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, user)
+}
+func (h *Handler) RefreshToken(c *gin.Context) {
+	var req struct {
+		RefreshToken string `json:"refresh_token"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || req.RefreshToken == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "refresh_token is required"})
+		return
+	}
+
+	_, claims, err := auth.RefreshAccessToken(req.RefreshToken, h.jwtSecret, h.jwtSecret)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid or expired refresh token"})
+		return
+	}
+
+	user, err := h.repo.FindByID(claims.UserID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+		return
+	}
+
+	newAccessToken, err := auth.GenerateAccessToken(user.ID, user.Email, user.Role, h.jwtSecret)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to generate access token"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"access_token": newAccessToken,
+		"user":         user,
+	})
 }

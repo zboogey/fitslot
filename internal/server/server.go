@@ -30,6 +30,7 @@ func New(db *sqlx.DB, cfg *config.Config) *Server {
 	{
 		public.POST("/register", userHandler.Register)
 		public.POST("/login", userHandler.Login)
+		public.POST("/refresh", userHandler.RefreshToken)
 	}
 
 	authMiddleware := auth.AuthMiddleware(cfg.JWTSecret)
@@ -90,5 +91,3 @@ func corsMiddleware() gin.HandlerFunc {
 		c.Next()
 	}
 }
-
-

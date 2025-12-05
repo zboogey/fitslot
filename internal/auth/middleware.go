@@ -1,13 +1,14 @@
 package auth
 
 import (
+	"errors"
 	"net/http"
 	"strings"
 
 	"github.com/gin-gonic/gin"
 )
 
-func AuthMiddleware(jwtSecret string) gin.HandlerFunc {
+func AuthMiddleware(accessTokenSecret string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" {
@@ -16,18 +17,36 @@ func AuthMiddleware(jwtSecret string) gin.HandlerFunc {
 			return
 		}
 
-		parts := strings.Split(authHeader, " ")
-		if len(parts) != 2 || parts[0] != "Bearer" {
+		parts := strings.SplitN(authHeader, " ", 2)
+		if len(parts) != 2 || strings.TrimSpace(parts[0]) != "Bearer" {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid authorization header format"})
 			c.Abort()
 			return
 		}
 
-		tokenString := parts[1]
+		tokenString := strings.TrimSpace(parts[1])
+		if tokenString == "" {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Token is empty"})
+			c.Abort()
+			return
+		}
 
-		claims, err := ValidateToken(tokenString, jwtSecret)
+		claims, err := ValidateToken(tokenString, accessTokenSecret)
 		if err != nil {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid or expired token"})
+			switch {
+			case errors.Is(err, ErrTokenExpired):
+				c.JSON(http.StatusUnauthorized, gin.H{"error": "Token expired"})
+			case errors.Is(err, ErrInvalidTokenType):
+				c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token type"})
+			default:
+				c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid or malformed token"})
+			}
+			c.Abort()
+			return
+		}
+
+		if claims.TokenType != "access" {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Access token required"})
 			c.Abort()
 			return
 		}
@@ -49,7 +68,14 @@ func RequireRole(requiredRole string) gin.HandlerFunc {
 			return
 		}
 
-		if role.(string) != requiredRole {
+		roleStr, ok := role.(string)
+		if !ok {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid role type"})
+			c.Abort()
+			return
+		}
+
+		if roleStr != requiredRole {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Insufficient permissions"})
 			c.Abort()
 			return
@@ -64,7 +90,11 @@ func GetUserID(c *gin.Context) (int, bool) {
 	if !exists {
 		return 0, false
 	}
-	return userID.(int), true
+
+	id, ok := userID.(int)
+	if !ok {
+		return 0, false
+	}
+
+	return id, true
 }
-
-
