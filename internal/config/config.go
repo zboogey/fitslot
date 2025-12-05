@@ -10,7 +10,6 @@ type Config struct {
 	DatabaseURL string
 	JWTSecret   string
 	
-	// Email configuration (SMTP)
 	EmailFrom     string
 	EmailFromName string
 	SMTPHost      string
@@ -25,10 +24,9 @@ func Load() (*Config, error) {
 	
 	cfg := &Config{
 		Port:        getEnv("PORT", "8080"),
-		DatabaseURL: getEnv("DATABASE_URL", "postgres://postgres:admin@localhost:5432/postgres?sslmode=disable"),
+		DatabaseURL: getEnv("DATABASE_URL", "postgres://postgres:postgres@localhost:5432/fitslot?sslmode=disable"),
 		JWTSecret:   getEnv("JWT_SECRET", "secret-key"),
 		
-		// Email configuration
 		EmailFrom:     getEnv("EMAIL_FROM", "noreply@fitslot.com"),
 		EmailFromName: getEnv("EMAIL_FROM_NAME", "FitSlot"),
 		SMTPHost:      getEnv("SMTP_HOST", "localhost"),
