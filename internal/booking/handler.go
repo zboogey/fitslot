@@ -25,7 +25,6 @@ type Handler struct {
 	gymRepo *gym.Repository
 }
 
-// NewHandler creates a new booking handler
 func NewHandler(db *sqlx.DB) *Handler {
 	return &Handler{
 		repo:    NewRepository(db),
@@ -34,7 +33,6 @@ func NewHandler(db *sqlx.DB) *Handler {
 }
 
 func (h *Handler) BookSlot(c *gin.Context) {
-	// Get user ID from context (set by AuthMiddleware)
 	userID, exists := auth.GetUserID(c)
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})

@@ -1,4 +1,5 @@
 -- +goose Up
+
 CREATE TABLE IF NOT EXISTS users (
                                      id SERIAL PRIMARY KEY,
                                      name VARCHAR(255) NOT NULL,
@@ -41,5 +42,4 @@ CREATE INDEX IF NOT EXISTS idx_bookings_user_id ON bookings(user_id);
 CREATE INDEX IF NOT EXISTS idx_bookings_time_slot_id ON bookings(time_slot_id);
 CREATE INDEX IF NOT EXISTS idx_bookings_status ON bookings(status);
 
--- Prevent the same user from booking the same slot twice
 ALTER TABLE bookings ADD CONSTRAINT unique_user_slot UNIQUE (user_id, time_slot_id);
