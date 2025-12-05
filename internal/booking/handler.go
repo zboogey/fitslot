@@ -2,17 +2,16 @@ package booking
 
 import (
 	"errors"
-	"fmt"
-	"log"
 	"net/http"
 	"strconv"
 	"time"
 
 	"fitslot/internal/auth"
-	"fitslot/internal/email"
 	"fitslot/internal/gym"
-	"fitslot/internal/user"
-
+	"fitslot/internal/subscription"
+	"fitslot/internal/wallet"
+	"fitslot/internal/email" 
+	"fitslot/internal/user" 
 	"github.com/gin-gonic/gin"
 	"github.com/jmoiron/sqlx"
 )
@@ -25,18 +24,22 @@ var (
 )
 
 type Handler struct {
-	repo     *Repository
-	gymRepo  *gym.Repository
-	userRepo *user.Repository
-	email    *email.Service
+	repo             *Repository
+	gymRepo          *gym.Repository
+	subscriptionRepo *subscription.Repository
+	walletRepo       *wallet.Repository
+	userRepo         *user.Repository
+	email            *email.Service  // Add this
 }
 
 func NewHandler(db *sqlx.DB, emailService *email.Service) *Handler {
 	return &Handler{
-		repo:     NewRepository(db),
-		gymRepo:  gym.NewRepository(db),
-		userRepo: user.NewRepository(db),
-		email:    emailService,
+		repo:             NewRepository(db),
+		gymRepo:          gym.NewRepository(db),
+		subscriptionRepo: subscription.NewRepository(db),
+		walletRepo:       wallet.NewRepository(db),
+		userRepo:         user.NewRepository(db),
+		email:            emailService,  // Add this
 	}
 }
 
@@ -87,34 +90,65 @@ func (h *Handler) BookSlot(c *gin.Context) {
 		return
 	}
 
+	ctx := c.Request.Context()
+
+	useSubscription := false
+	var activeSub *subscription.Subscription
+
+	sub, err := h.subscriptionRepo.GetActiveForUserAndGym(ctx, userID, slot.GymID)
+	if err == nil && sub.Status == subscription.StatusActive {
+		if sub.VisitsLimit == nil {
+			useSubscription = true
+			activeSub = sub
+		} else if sub.VisitsUsed < *sub.VisitsLimit {
+			useSubscription = true
+			activeSub = sub
+		}
+	}
+
 	booking, err := h.repo.CreateBooking(userID, slotID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create booking"})
 		return
 	}
 
-	go func() {
-		user, err := h.userRepo.FindByID(userID)
-		if err != nil {
-			log.Printf("Failed to get user details for email: %v", err)
+	if useSubscription && activeSub != nil {
+		if err := h.subscriptionRepo.IncrementVisits(ctx, activeSub.ID); err != nil {
+			// Бронь уже есть, поэтому просто вернём warning
+			c.JSON(http.StatusCreated, gin.H{
+				"booking":      booking,
+				"paid_with":    "subscription",
+				"subscription": activeSub,
+				"warning":      "booking created, but failed to update subscription usage",
+			})
 			return
 		}
 
-		details := fmt.Sprintf("Gym slot at %s", slot.StartTime.Format("3:04 PM"))
-		err = h.email.SendBookingConfirmation(
-			c.Request.Context(),
-			user.Email,
-			user.Name,
-			"Gym Slot",
-			details,
-			slot.StartTime,
-		)
-		if err != nil {
-			log.Printf("Failed to send booking confirmation email: %v", err)
-		}
-	}()
+		c.JSON(http.StatusCreated, gin.H{
+			"booking":      booking,
+			"paid_with":    "subscription",
+			"subscription": activeSub,
+		})
+		return
+	}
+	
+	const priceCents int64 = 1000
 
-	c.JSON(http.StatusCreated, booking)
+	if err := h.walletRepo.AddTransaction(ctx, userID, -priceCents, "booking_payment"); err != nil {
+		if err.Error() == "insufficient balance" {
+			c.JSON(http.StatusPaymentRequired, gin.H{"error": "insufficient wallet balance"})
+			return
+		}
+
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to charge wallet"})
+		return
+	}
+
+	c.JSON(http.StatusCreated, gin.H{
+		"booking":      booking,
+		"paid_with":    "wallet",
+		"amount_cents": priceCents,
+	})
 }
 
 func (h *Handler) CancelBooking(c *gin.Context) {
@@ -142,11 +176,6 @@ func (h *Handler) CancelBooking(c *gin.Context) {
 		return
 	}
 
-	slot, err := h.gymRepo.GetTimeSlotByID(booking.TimeSlotID)
-	if err != nil {
-		log.Printf("Failed to get slot details: %v", err)
-	}
-
 	err = h.repo.CancelBooking(bookingID)
 	if err != nil {
 		if err == ErrBookingNotFoundOrAlreadyCancelled {
@@ -156,30 +185,6 @@ func (h *Handler) CancelBooking(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to cancel booking"})
 		return
 	}
-
-	go func() {
-		user, err := h.userRepo.FindByID(userID)
-		if err != nil {
-			log.Printf("Failed to get user details for email: %v", err)
-			return
-		}
-
-		details := "Your gym slot booking"
-		if slot != nil {
-			details = fmt.Sprintf("Gym slot at %s", slot.StartTime.Format("3:04 PM"))
-		}
-
-		err = h.email.SendCancellation(
-			c.Request.Context(),
-			user.Email,
-			user.Name,
-			"Gym Slot",
-			details,
-		)
-		if err != nil {
-			log.Printf("Failed to send cancellation email: %v", err)
-		}
-	}()
 
 	c.JSON(http.StatusOK, gin.H{"message": "Booking cancelled successfully"})
 }

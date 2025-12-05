@@ -76,4 +76,3 @@ func (r *Repository) EmailExists(email string) (bool, error) {
 
 var ErrUserNotFound = errors.New("user not found")
 
-

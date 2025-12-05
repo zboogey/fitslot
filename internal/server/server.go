@@ -6,7 +6,10 @@ import (
 	"fitslot/internal/config"
 	"fitslot/internal/email"
 	"fitslot/internal/gym"
+	"fitslot/internal/subscription"
 	"fitslot/internal/user"
+	"fitslot/internal/wallet"
+	
 	"github.com/gin-gonic/gin"
 	"github.com/jmoiron/sqlx"
 )
@@ -25,11 +28,14 @@ func New(db *sqlx.DB, cfg *config.Config, emailService *email.Service) *Server {
 	userHandler := user.NewHandler(db, cfg.JWTSecret)
 	gymHandler := gym.NewHandler(db)
 	bookingHandler := booking.NewHandler(db, emailService)
+	walletHandler := wallet.NewHandler(db)
+	subscriptionHandler := subscription.NewHandler(db)
 
 	public := router.Group("/auth")
 	{
 		public.POST("/register", userHandler.Register)
 		public.POST("/login", userHandler.Login)
+		public.POST("/refresh", userHandler.RefreshToken)
 	}
 
 	authMiddleware := auth.AuthMiddleware(cfg.JWTSecret)
@@ -42,6 +48,12 @@ func New(db *sqlx.DB, cfg *config.Config, emailService *email.Service) *Server {
 		protected.POST("/slots/:slotID/book", bookingHandler.BookSlot)
 		protected.POST("/bookings/:bookingID/cancel", bookingHandler.CancelBooking)
 		protected.GET("/bookings", bookingHandler.ListMyBookings)
+		protected.GET("/wallet", walletHandler.GetBalance)
+		protected.POST("/wallet/topup", walletHandler.TopUp)
+		protected.GET("/wallet/transactions", walletHandler.ListTransactions)
+		protected.POST("/subscriptions", subscriptionHandler.Create)
+		protected.GET("/subscriptions", subscriptionHandler.ListMy)
+		protected.GET("/subscriptions/plans", subscriptionHandler.ListPlans)
 	}
 
 	adminMiddleware := auth.RequireRole("admin")
@@ -67,7 +79,7 @@ func New(db *sqlx.DB, cfg *config.Config, emailService *email.Service) *Server {
 			return
 		}
 		
-		err := emailService.Send(c.Request.Context(), testEmail, "Test User", "Test Email", "Email service is working!")
+		err := emailService.Send(c.Request.Context(), testEmail, "Test User", "Test Email from FitSlot", "Email is working!")
 		if err != nil {
 			c.JSON(500, gin.H{"error": err.Error()})
 			return

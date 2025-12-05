@@ -5,11 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net/smtp"
 	"time"
 
 	"github.com/redis/go-redis/v9"
-	"github.com/sendgrid/sendgrid-go"
-	"github.com/sendgrid/sendgrid-go/helpers/mail"
 )
 
 type EmailJob struct {
@@ -22,20 +21,26 @@ type EmailJob struct {
 }
 
 type Service struct {
-	sendgrid *sendgrid.Client
 	redis    *redis.Client
 	from     string
 	fromName string
+	smtpHost string
+	smtpPort string
+	smtpUser string
+	smtpPass string
 }
 
-func New(sendgridKey, fromEmail, fromName, redisAddr string) *Service {
+func New(fromEmail, fromName, smtpHost, smtpPort, smtpUser, smtpPass, redisAddr string) *Service {
 	return &Service{
-		sendgrid: sendgrid.NewSendClient(sendgridKey),
 		redis: redis.NewClient(&redis.Options{
 			Addr: redisAddr,
 		}),
 		from:     fromEmail,
 		fromName: fromName,
+		smtpHost: smtpHost,
+		smtpPort: smtpPort,
+		smtpUser: smtpUser,
+		smtpPass: smtpPass,
 	}
 }
 
@@ -59,7 +64,7 @@ func (s *Service) Send(ctx context.Context, to, name, subject, body string) erro
 
 func (s *Service) Start(ctx context.Context) {
 	log.Println("Email service started")
-	
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -72,7 +77,6 @@ func (s *Service) Start(ctx context.Context) {
 }
 
 func (s *Service) processNext(ctx context.Context) {
-
 	result, err := s.redis.BRPop(ctx, 2*time.Second, "emails").Result()
 	if err != nil {
 		return
@@ -106,20 +110,21 @@ func (s *Service) processNext(ctx context.Context) {
 }
 
 func (s *Service) sendNow(job EmailJob) error {
-	from := mail.NewEmail(s.fromName, s.from)
-	to := mail.NewEmail(job.Name, job.To)
-	message := mail.NewSingleEmail(from, job.Subject, to, job.Body, job.Body)
 
-	response, err := s.sendgrid.Send(message)
-	if err != nil {
-		return err
+	message := fmt.Sprintf("From: %s <%s>\r\n", s.fromName, s.from)
+	message += fmt.Sprintf("To: %s\r\n", job.To)
+	message += fmt.Sprintf("Subject: %s\r\n", job.Subject)
+	message += "\r\n" + job.Body
+
+	var auth smtp.Auth
+	if s.smtpUser != "" && s.smtpPass != "" {
+		auth = smtp.PlainAuth("", s.smtpUser, s.smtpPass, s.smtpHost)
 	}
 
-	if response.StatusCode >= 400 {
-		return fmt.Errorf("sendgrid error: %d", response.StatusCode)
-	}
+	addr := s.smtpHost + ":" + s.smtpPort
+	err := smtp.SendMail(addr, auth, s.from, []string{job.To}, []byte(message))
 
-	return nil
+	return err
 }
 
 func (s *Service) saveFailed(job EmailJob, err error) {
@@ -183,6 +188,7 @@ Your booking has been cancelled:
 
 Type: %s
 Details: %s
+
 
 - FitSlot Team`, name, bookingType, details)
 

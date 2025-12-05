@@ -20,4 +20,3 @@ type BookingWithDetails struct {
 	UserEmail     string    `json:"user_email"`
 }
 
-
