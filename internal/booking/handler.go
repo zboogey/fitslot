@@ -8,6 +8,8 @@ import (
 
 	"fitslot/internal/auth"
 	"fitslot/internal/gym"
+	"fitslot/internal/subscription"
+	"fitslot/internal/wallet"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jmoiron/sqlx"
@@ -21,14 +23,18 @@ var (
 )
 
 type Handler struct {
-	repo    *Repository
-	gymRepo *gym.Repository
+	repo             *Repository
+	gymRepo          *gym.Repository
+	subscriptionRepo *subscription.Repository
+	walletRepo       *wallet.Repository
 }
 
 func NewHandler(db *sqlx.DB) *Handler {
 	return &Handler{
-		repo:    NewRepository(db),
-		gymRepo: gym.NewRepository(db),
+		repo:             NewRepository(db),
+		gymRepo:          gym.NewRepository(db),
+		subscriptionRepo: subscription.NewRepository(db),
+		walletRepo:       wallet.NewRepository(db),
 	}
 }
 
@@ -79,13 +85,65 @@ func (h *Handler) BookSlot(c *gin.Context) {
 		return
 	}
 
+	ctx := c.Request.Context()
+
+	useSubscription := false
+	var activeSub *subscription.Subscription
+
+	sub, err := h.subscriptionRepo.GetActiveForUserAndGym(ctx, userID, slot.GymID)
+	if err == nil && sub.Status == subscription.StatusActive {
+		if sub.VisitsLimit == nil {
+			useSubscription = true
+			activeSub = sub
+		} else if sub.VisitsUsed < *sub.VisitsLimit {
+			useSubscription = true
+			activeSub = sub
+		}
+	}
+
 	booking, err := h.repo.CreateBooking(userID, slotID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create booking"})
 		return
 	}
 
-	c.JSON(http.StatusCreated, booking)
+	if useSubscription && activeSub != nil {
+		if err := h.subscriptionRepo.IncrementVisits(ctx, activeSub.ID); err != nil {
+			// Бронь уже есть, поэтому просто вернём warning
+			c.JSON(http.StatusCreated, gin.H{
+				"booking":      booking,
+				"paid_with":    "subscription",
+				"subscription": activeSub,
+				"warning":      "booking created, but failed to update subscription usage",
+			})
+			return
+		}
+
+		c.JSON(http.StatusCreated, gin.H{
+			"booking":      booking,
+			"paid_with":    "subscription",
+			"subscription": activeSub,
+		})
+		return
+	}
+	
+	const priceCents int64 = 1000
+
+	if err := h.walletRepo.AddTransaction(ctx, userID, -priceCents, "booking_payment"); err != nil {
+		if err.Error() == "insufficient balance" {
+			c.JSON(http.StatusPaymentRequired, gin.H{"error": "insufficient wallet balance"})
+			return
+		}
+
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to charge wallet"})
+		return
+	}
+
+	c.JSON(http.StatusCreated, gin.H{
+		"booking":      booking,
+		"paid_with":    "wallet",
+		"amount_cents": priceCents,
+	})
 }
 
 func (h *Handler) CancelBooking(c *gin.Context) {

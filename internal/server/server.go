@@ -5,7 +5,9 @@ import (
 	"fitslot/internal/booking"
 	"fitslot/internal/config"
 	"fitslot/internal/gym"
+	"fitslot/internal/subscription"
 	"fitslot/internal/user"
+	"fitslot/internal/wallet"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jmoiron/sqlx"
@@ -25,6 +27,8 @@ func New(db *sqlx.DB, cfg *config.Config) *Server {
 	userHandler := user.NewHandler(db, cfg.JWTSecret)
 	gymHandler := gym.NewHandler(db)
 	bookingHandler := booking.NewHandler(db)
+	walletHandler := wallet.NewHandler(db)
+	subscriptionHandler := subscription.NewHandler(db)
 
 	public := router.Group("/auth")
 	{
@@ -44,7 +48,16 @@ func New(db *sqlx.DB, cfg *config.Config) *Server {
 
 		protected.POST("/slots/:slotID/book", bookingHandler.BookSlot)
 		protected.POST("/bookings/:bookingID/cancel", bookingHandler.CancelBooking)
-		protected.GET("/bookings", bookingHandler.ListMyBookings) // Optional: list own bookings
+		protected.GET("/bookings", bookingHandler.ListMyBookings)
+
+		protected.GET("/wallet", walletHandler.GetBalance)
+		protected.POST("/wallet/topup", walletHandler.TopUp)
+		protected.GET("/wallet/transactions", walletHandler.ListTransactions)
+
+		protected.POST("/subscriptions", subscriptionHandler.Create)
+		protected.GET("/subscriptions", subscriptionHandler.ListMy)
+		protected.GET("/subscriptions/plans", subscriptionHandler.ListPlans)
+
 	}
 
 	adminMiddleware := auth.RequireRole("admin")
