@@ -29,7 +29,7 @@ type Handler struct {
 	subscriptionRepo *subscription.Repository
 	walletRepo       *wallet.Repository
 	userRepo         *user.Repository
-	email            *email.Service  // Add this
+	email            *email.Service
 }
 
 func NewHandler(db *sqlx.DB, emailService *email.Service) *Handler {
@@ -39,7 +39,7 @@ func NewHandler(db *sqlx.DB, emailService *email.Service) *Handler {
 		subscriptionRepo: subscription.NewRepository(db),
 		walletRepo:       wallet.NewRepository(db),
 		userRepo:         user.NewRepository(db),
-		email:            emailService,  // Add this
+		email:            emailService,
 	}
 }
 
