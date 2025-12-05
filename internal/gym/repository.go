@@ -151,3 +151,4 @@ func (r *Repository) GetTimeSlotsWithAvailability(gymID int, onlyFuture bool) ([
 	return result, nil
 }
 
+
