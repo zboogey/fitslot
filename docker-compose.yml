@@ -1,6 +1,7 @@
 version: '3.8'
 
 services:
+  # PostgreSQL database
   db:
     image: postgres:15-alpine
     container_name: fitslot-db
@@ -18,6 +19,21 @@ services:
       timeout: 5s
       retries: 5
 
+  # Redis for email queue
+  redis:
+    image: redis:7-alpine
+    container_name: fitslot-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Go application
   app:
     build: .
     container_name: fitslot-app
@@ -27,13 +43,18 @@ services:
       PORT: 8080
       DATABASE_URL: postgres://postgres:postgres@db:5432/fitslot?sslmode=disable
       JWT_SECRET: your-secret-key-change-in-production
+      # Email Configuration
+      SENDGRID_API_KEY: your_sendgrid_api_key_here
+      EMAIL_FROM: noreply@fitslot.com
+      EMAIL_FROM_NAME: FitSlot
+      REDIS_ADDR: redis:6379
     depends_on:
       db:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     restart: unless-stopped
 
 volumes:
   postgres_data:
-
-
-
+  redis_data:
