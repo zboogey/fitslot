@@ -1,5 +1,3 @@
--- +goose Down
-
 ALTER TABLE bookings DROP CONSTRAINT IF EXISTS unique_user_slot;
 
 DROP INDEX IF EXISTS idx_bookings_status;
