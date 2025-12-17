@@ -1,9 +1,7 @@
 package booking
 
 import (
-	"context"
 	"errors"
-	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -71,7 +69,6 @@ func (h *Handler) BookSlot(c *gin.Context) {
 	}
 
 	if slot.StartTime.Before(time.Now()) {
-		logger.Warnf("User %d tried to book past slot %d", userID, slotID)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Cannot book a slot in the past"})
 		return
 	}
@@ -84,7 +81,6 @@ func (h *Handler) BookSlot(c *gin.Context) {
 	}
 
 	if bookedCount >= slot.Capacity {
-		logger.Warnf("Slot %d is full (capacity: %d)", slotID, slot.Capacity)
 		c.JSON(http.StatusConflict, gin.H{"error": "Time slot is full"})
 		return
 	}
@@ -97,7 +93,6 @@ func (h *Handler) BookSlot(c *gin.Context) {
 	}
 
 	if hasBooking {
-		logger.Warnf("User %d already has booking for slot %d", userID, slotID)
 		c.JSON(http.StatusConflict, gin.H{"error": "You already have a booking for this slot"})
 		return
 	}
@@ -194,7 +189,6 @@ func (h *Handler) CancelBooking(c *gin.Context) {
 	}
 
 	if booking.UserID != userID {
-		logger.Warnf("User %d tried to cancel booking %d owned by user %d", userID, bookingID, booking.UserID)
 		c.JSON(http.StatusForbidden, gin.H{"error": "You can only cancel your own bookings"})
 		return
 	}
