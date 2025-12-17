@@ -11,25 +11,31 @@ import (
 	"fitslot/internal/config"
 	"fitslot/internal/db"
 	"fitslot/internal/email"
+	"fitslot/internal/logger"
 	"fitslot/internal/server"
 )
 
 func main() {
 
+	logger.Init()
+	logger.Info("Starting FitSlot application")
 	cfg, err := config.Load()
 	if err != nil {
-		log.Fatalf("Failed to load config: %v", err)
+		logger.Fatalf("Failed to load config: %v", err)
 	}
 	
+	logger.Info("Connecting to database...")
 	database, err := db.Connect(cfg.DatabaseURL)
 	if err != nil {
-		log.Fatalf("Failed to connect to database: %v", err)
+		logger.Fatalf("Failed to connect to database: %v", err)
 	}
 	defer database.Close()
+	logger.Info("Database connected")
 	
 	if err := db.RunMigrations(database); err != nil {
-		log.Fatalf("Failed to run migrations: %v", err)
+		logger.Fatalf("Failed to run migrations: %v", err)
 	}
+	logger.Info("Migrations completed")
 	
 	emailService := email.New(
 		cfg.EmailFrom,
@@ -41,6 +47,7 @@ func main() {
 		cfg.RedisAddr,
 	)
 	defer emailService.Close()
+	logger.Info("Email service initialized")
 	
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -49,9 +56,9 @@ func main() {
 	srv := server.New(database, cfg, emailService)
 	
 	go func() {
-		log.Printf("Server starting on port %s", cfg.Port)
+		logger.Infof("Server starting on port %s", cfg.Port)
 		if err := srv.Start(cfg.Port); err != nil {
-			log.Fatalf("Server error: %v", err)
+			logger.Fatalf("Server error: %v", err)	
 		}
 	}()
 	
@@ -59,10 +66,10 @@ func main() {
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 	<-sigChan
 	
-	log.Println("Shutting down...")
+	logger.Info("Shutting down...")
 	cancel()
 	
 	time.Sleep(2 * time.Second)
 	
-	log.Println("Server stopped")
+	logger.Info("Server stopped")
 }
