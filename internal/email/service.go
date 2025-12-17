@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
+	"fitslot/internal/logger"
 )
 
 type EmailJob struct {
@@ -56,19 +57,26 @@ func (s *Service) Send(ctx context.Context, to, name, subject, body string) erro
 
 	data, err := json.Marshal(job)
 	if err != nil {
+		logger.Errorf("Failed to marshal email job: %v", err)
 		return err
 	}
 
-	return s.redis.LPush(ctx, "emails", data).Err()
+	if err := s.redis.LPush(ctx, "emails", data).Err(); err != nil {
+		logger.Errorf("Failed to queue email to %s: %v", to, err)
+		return err
+	}
+
+	logger.Infof("Email queued: %s to %s", subject, to)
+	return nil
 }
 
 func (s *Service) Start(ctx context.Context) {
-	log.Println("Email service started")
+	logger.Info("Email service started")
 
 	for {
 		select {
 		case <-ctx.Done():
-			log.Println("Email service stopped")
+			logger.Info("Email service stopped")
 			return
 		default:
 			s.processNext(ctx)
@@ -84,29 +92,28 @@ func (s *Service) processNext(ctx context.Context) {
 
 	var job EmailJob
 	if err := json.Unmarshal([]byte(result[1]), &job); err != nil {
-		log.Printf("Bad email data: %v", err)
+		logger.Errorf("Bad email data: %v", err)
 		return
 	}
 
 	job.Tries++
-	log.Printf("Sending email to %s (attempt %d)", job.To, job.Tries)
-
+	logger.Infof("Sending email to %s (attempt %d)", job.To, job.Tries)
 	if err := s.sendNow(job); err != nil {
-		log.Printf("Failed to send email: %v", err)
+		logger.Errorf("Failed to send email to %s: %v", job.To, err)
 
 		if job.Tries < 3 {
 			time.Sleep(5 * time.Second)
 			data, _ := json.Marshal(job)
 			s.redis.LPush(context.Background(), "emails", data)
-			log.Printf("Will retry email to %s", job.To)
+			logger.Infof("Retrying email to %s (attempt %d)", job.To, job.Tries+1)
 		} else {
-			log.Printf("Email to %s failed after 3 tries", job.To)
+			logger.Errorf("Email to %s failed after 3 attempts", job.To)
 			s.saveFailed(job, err)
 		}
 		return
 	}
 
-	log.Printf("Email sent to %s", job.To)
+	logger.Infof("Email sent successfully to %s", job.To)
 }
 
 func (s *Service) sendNow(job EmailJob) error {
@@ -135,6 +142,7 @@ func (s *Service) saveFailed(job EmailJob, err error) {
 	}
 	data, _ := json.Marshal(failed)
 	s.redis.LPush(context.Background(), "emails:failed", data)
+	logger.Errorf("Email moved to failed queue: %s", job.To)
 }
 
 func (s *Service) QueueLength(ctx context.Context) int64 {
