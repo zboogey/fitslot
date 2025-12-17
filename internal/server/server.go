@@ -12,6 +12,7 @@ import (
 	
 	"github.com/gin-gonic/gin"
 	"github.com/jmoiron/sqlx"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 type Server struct {
@@ -23,6 +24,7 @@ type Server struct {
 
 func New(db *sqlx.DB, cfg *config.Config, emailService *email.Service) *Server {
 	router := gin.Default()
+	router.Use(MetricsMiddleware())
 	router.Use(corsMiddleware())
 
 	userHandler := user.NewHandler(db, cfg.JWTSecret)
@@ -30,6 +32,7 @@ func New(db *sqlx.DB, cfg *config.Config, emailService *email.Service) *Server {
 	bookingHandler := booking.NewHandler(db, emailService)
 	walletHandler := wallet.NewHandler(db)
 	subscriptionHandler := subscription.NewHandler(db)
+	router.GET("/metrics", gin.WrapH(promhttp.Handler()))
 
 	public := router.Group("/auth")
 	{

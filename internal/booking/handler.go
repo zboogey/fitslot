@@ -15,6 +15,7 @@ import (
 	"fitslot/internal/logger"
 	"github.com/gin-gonic/gin"
 	"github.com/jmoiron/sqlx"
+	"fitslot/internal/metrics"
 )
 
 var (
@@ -135,6 +136,7 @@ func (h *Handler) BookSlot(c *gin.Context) {
 			return
 		}
 		logger.Infof("Booking %d paid with subscription %d", booking.ID, activeSub.ID)
+		metrics.RecordBooking("success", "subscription")
 		c.JSON(http.StatusCreated, gin.H{
 			"booking":      booking,
 			"paid_with":    "subscription",
@@ -157,6 +159,7 @@ func (h *Handler) BookSlot(c *gin.Context) {
 	}
 
 	logger.Infof("Booking %d paid with wallet: %d cents", booking.ID, priceCents)
+	metrics.RecordBooking("success", "wallet")
 	c.JSON(http.StatusCreated, gin.H{
 		"booking":      booking,
 		"paid_with":    "wallet",
@@ -200,11 +203,12 @@ func (h *Handler) CancelBooking(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Booking not found or already cancelled"})
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to cancel booking"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to cancel booking"})	
 		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "Booking cancelled successfully"})
+	metrics.RecordBookingCancellation()
 }
 
 func (h *Handler) ListMyBookings(c *gin.Context) {

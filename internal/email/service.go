@@ -4,12 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/smtp"
 	"time"
 
 	"github.com/redis/go-redis/v9"
 	"fitslot/internal/logger"
+	"fitslot/internal/metrics"
 )
 
 type EmailJob struct {
@@ -100,6 +100,7 @@ func (s *Service) processNext(ctx context.Context) {
 	logger.Infof("Sending email to %s (attempt %d)", job.To, job.Tries)
 	if err := s.sendNow(job); err != nil {
 		logger.Errorf("Failed to send email to %s: %v", job.To, err)
+		metrics.RecordEmail(job.Subject, "failed")
 
 		if job.Tries < 3 {
 			time.Sleep(5 * time.Second)
@@ -114,6 +115,7 @@ func (s *Service) processNext(ctx context.Context) {
 	}
 
 	logger.Infof("Email sent successfully to %s", job.To)
+	metrics.RecordEmail(job.Subject, "success")
 }
 
 func (s *Service) sendNow(job EmailJob) error {
