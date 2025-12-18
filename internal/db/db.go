@@ -100,4 +100,3 @@ func Exists(db *sqlx.DB, query string, args ...interface{}) (bool, error) {
 	return exists, err
 }
 
-

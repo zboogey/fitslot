@@ -4,31 +4,35 @@ import (
 	"fitslot/internal/auth"
 	"fitslot/internal/booking"
 	"fitslot/internal/config"
+	"fitslot/internal/email"
 	"fitslot/internal/gym"
 	"fitslot/internal/subscription"
 	"fitslot/internal/user"
 	"fitslot/internal/wallet"
-
+	
 	"github.com/gin-gonic/gin"
 	"github.com/jmoiron/sqlx"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 type Server struct {
 	router *gin.Engine
 	db     *sqlx.DB
 	config *config.Config
+	email  *email.Service
 }
 
-func New(db *sqlx.DB, cfg *config.Config) *Server {
+func New(db *sqlx.DB, cfg *config.Config, emailService *email.Service) *Server {
 	router := gin.Default()
-
+	router.Use(MetricsMiddleware())
 	router.Use(corsMiddleware())
 
 	userHandler := user.NewHandler(db, cfg.JWTSecret)
 	gymHandler := gym.NewHandler(db)
-	bookingHandler := booking.NewHandler(db)
+	bookingHandler := booking.NewHandler(db, emailService)
 	walletHandler := wallet.NewHandler(db)
 	subscriptionHandler := subscription.NewHandler(db)
+	router.GET("/metrics", gin.WrapH(promhttp.Handler()))
 
 	public := router.Group("/auth")
 	{
@@ -42,22 +46,17 @@ func New(db *sqlx.DB, cfg *config.Config) *Server {
 	protected.Use(authMiddleware)
 	{
 		protected.GET("/me", userHandler.GetMe)
-
 		protected.GET("/gyms", gymHandler.ListGyms)
 		protected.GET("/gyms/:gymID/slots", gymHandler.ListTimeSlots)
-
 		protected.POST("/slots/:slotID/book", bookingHandler.BookSlot)
 		protected.POST("/bookings/:bookingID/cancel", bookingHandler.CancelBooking)
 		protected.GET("/bookings", bookingHandler.ListMyBookings)
-
 		protected.GET("/wallet", walletHandler.GetBalance)
 		protected.POST("/wallet/topup", walletHandler.TopUp)
 		protected.GET("/wallet/transactions", walletHandler.ListTransactions)
-
 		protected.POST("/subscriptions", subscriptionHandler.Create)
 		protected.GET("/subscriptions", subscriptionHandler.ListMy)
 		protected.GET("/subscriptions/plans", subscriptionHandler.ListPlans)
-
 	}
 
 	adminMiddleware := auth.RequireRole("admin")
@@ -68,7 +67,6 @@ func New(db *sqlx.DB, cfg *config.Config) *Server {
 		admin.GET("/gyms", gymHandler.ListGyms)
 		admin.POST("/gyms/:gymID/slots", gymHandler.CreateTimeSlot)
 		admin.GET("/gyms/:gymID/slots", gymHandler.ListTimeSlots)
-
 		admin.GET("/slots/:slotID/bookings", bookingHandler.ListBookingsBySlot)
 		admin.GET("/gyms/:gymID/bookings", bookingHandler.ListBookingsByGym)
 	}
@@ -76,11 +74,28 @@ func New(db *sqlx.DB, cfg *config.Config) *Server {
 	router.GET("/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{"status": "ok"})
 	})
+	
+	router.GET("/test-email", func(c *gin.Context) {
+		testEmail := c.Query("email")
+		if testEmail == "" {
+			c.JSON(400, gin.H{"error": "email parameter required"})
+			return
+		}
+		
+		err := emailService.Send(c.Request.Context(), testEmail, "Test User", "Test Email from FitSlot", "Email is working!")
+		if err != nil {
+			c.JSON(500, gin.H{"error": err.Error()})
+			return
+		}
+		
+		c.JSON(200, gin.H{"status": "Email queued successfully"})
+	})
 
 	return &Server{
 		router: router,
 		db:     db,
 		config: cfg,
+		email:  emailService,
 	}
 }
 
@@ -95,12 +110,10 @@ func corsMiddleware() gin.HandlerFunc {
 		c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
 		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, accept, origin, Cache-Control, X-Requested-With")
 		c.Writer.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS, GET, PUT, DELETE, PATCH")
-
 		if c.Request.Method == "OPTIONS" {
 			c.AbortWithStatus(204)
 			return
 		}
-
 		c.Next()
 	}
 }

@@ -1,6 +1,7 @@
 version: '3.8'
 
 services:
+  # PostgreSQL database
   db:
     image: postgres:15-alpine
     container_name: fitslot-db
@@ -18,6 +19,42 @@ services:
       timeout: 5s
       retries: 5
 
+  # Redis for email queue
+  redis:
+    image: redis:7-alpine
+    container_name: fitslot-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # MailHog for email testing
+  mailhog:
+    image: mailhog/mailhog
+    container_name: fitslot-mailhog
+    ports:
+      - "1025:1025"  # SMTP server
+      - "8025:8025"  # Web UI at http://localhost:8025
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: fitslot-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+    depends_on:
+      - app
+
+  # Go application
   app:
     build: .
     container_name: fitslot-app
@@ -27,13 +64,24 @@ services:
       PORT: 8080
       DATABASE_URL: postgres://postgres:postgres@db:5432/fitslot?sslmode=disable
       JWT_SECRET: your-secret-key-change-in-production
+      # Email Configuration (MailHog SMTP)
+      EMAIL_FROM: noreply@fitslot.com
+      EMAIL_FROM_NAME: FitSlot
+      SMTP_HOST: mailhog
+      SMTP_PORT: "1025"
+      SMTP_USER: ""
+      SMTP_PASS: ""
+      REDIS_ADDR: redis:6379
     depends_on:
       db:
         condition: service_healthy
+      redis:
+        condition: service_healthy
+      mailhog:
+        condition: service_started
     restart: unless-stopped
 
 volumes:
   postgres_data:
-
-
-
+  redis_data:
+  prometheus_data:

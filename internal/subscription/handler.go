@@ -9,6 +9,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/jmoiron/sqlx"
+	"fitslot/internal/metrics"
+	"fitslot/internal/logger"
 )
 
 type Handler struct {
@@ -125,9 +127,12 @@ func (h *Handler) Create(c *gin.Context) {
 	subType := SubscriptionType(plan.Type)
 	sub, err := h.repo.CreateSubscription(ctx, userID, req.GymID, subType, plan.PriceCents, plan.VisitsLimit)
 	if err != nil {
+		logger.Errorf("Failed to create subscription for user %d: %v", userID, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create subscription"})
 		return
 	}
+	logger.Infof("Subscription created: Type=%s, User=%d", plan.Type, userID)
+	metrics.RecordSubscription(plan.Type)
 
 	c.JSON(http.StatusCreated, CreateSubscriptionResponse{
 		Subscription: sub,

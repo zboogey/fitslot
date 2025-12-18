@@ -78,6 +78,7 @@ func (h *Handler) CreateTimeSlot(c *gin.Context) {
 		return
 	}
 
+	// Validate that end time is after start time
 	if endTime.Before(startTime) || endTime.Equal(startTime) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "end_time must be after start_time"})
 		return

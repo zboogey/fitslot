@@ -36,4 +36,3 @@ type CreateTimeSlotRequest struct {
 	Capacity  int    `json:"capacity" binding:"required,min=1"`
 }
 
-

@@ -5,6 +5,7 @@ import (
 	"strconv"
 
 	"fitslot/internal/auth"
+	"fitslot/internal/metrics"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jmoiron/sqlx"
@@ -58,6 +59,7 @@ func (h *Handler) TopUp(c *gin.Context) {
 		return
 	}
 
+	metrics.RecordWalletTopUp()
 	w, err := h.repo.GetOrCreateWallet(c.Request.Context(), userID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load wallet after top up"})
