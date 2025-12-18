@@ -4,113 +4,148 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"time"
+
+	"fitslot/internal/api"
 
 	"github.com/gin-gonic/gin"
-	"github.com/jmoiron/sqlx"
 )
 
 type Handler struct {
-	repo *Repository
+	service Service
 }
 
-func NewHandler(db *sqlx.DB) *Handler {
+func NewHandler(service Service) *Handler {
 	return &Handler{
-		repo: NewRepository(db),
+		service: service,
 	}
 }
 
+// @Summary      Create a gym
+// @Description  Admin-only: create a new gym
+// @Tags         admin,gyms
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Param        request body gym.CreateGymRequest true "Gym payload"
+// @Success      201 {object} gym.Gym
+// @Failure      400 {object} api.ErrorResponse
+// @Failure      401 {object} api.ErrorResponse
+// @Failure      403 {object} api.ErrorResponse
+// @Failure      500 {object} api.ErrorResponse
+// @Router       /admin/gyms [post]
 func (h *Handler) CreateGym(c *gin.Context) {
 	var req CreateGymRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{Error: err.Error()})
 		return
 	}
 
-	gym, err := h.repo.CreateGym(req.Name, req.Location)
+	ctx := c.Request.Context()
+	gym, err := h.service.CreateGym(ctx, req)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create gym"})
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Error: "Failed to create gym"})
 		return
 	}
 
 	c.JSON(http.StatusCreated, gym)
 }
 
+// @Summary      List gyms
+// @Tags         gyms,admin
+// @Produce      json
+// @Security     BearerAuth
+// @Success      200 {array} gym.Gym
+// @Failure      401 {object} api.ErrorResponse
+// @Failure      500 {object} api.ErrorResponse
+// @Router       /gyms [get]
+// @Router       /admin/gyms [get]
 func (h *Handler) ListGyms(c *gin.Context) {
-	gyms, err := h.repo.GetAllGyms()
+	ctx := c.Request.Context()
+	gyms, err := h.service.GetAllGyms(ctx)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch gyms"})
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Error: "Failed to fetch gyms"})
 		return
 	}
 
 	c.JSON(http.StatusOK, gyms)
 }
 
+// @Summary      Create a time slot
+// @Description  Admin-only: create a time slot for a gym
+// @Tags         admin,gyms
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Param        gymID path int true "Gym ID"
+// @Param        request body gym.CreateTimeSlotRequest true "Time slot payload"
+// @Success      201 {object} gym.TimeSlot
+// @Failure      400 {object} api.ErrorResponse
+// @Failure      401 {object} api.ErrorResponse
+// @Failure      403 {object} api.ErrorResponse
+// @Failure      404 {object} api.ErrorResponse
+// @Failure      500 {object} api.ErrorResponse
+// @Router       /admin/gyms/{gymID}/slots [post]
 func (h *Handler) CreateTimeSlot(c *gin.Context) {
 	gymIDStr := c.Param("gymID")
 	gymID, err := strconv.Atoi(gymIDStr)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid gym ID"})
-		return
-	}
-
-	_, err = h.repo.GetGymByID(gymID)
-	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Gym not found"})
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{Error: "Invalid gym ID"})
 		return
 	}
 
 	var req CreateTimeSlotRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{Error: err.Error()})
 		return
 	}
 
-	startTime, err := time.Parse(time.RFC3339, req.StartTime)
+	ctx := c.Request.Context()
+	slot, err := h.service.CreateTimeSlot(ctx, gymID, req)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid start_time format. Use RFC3339 (e.g., 2024-01-15T10:00:00Z)"})
-		return
-	}
-
-	endTime, err := time.Parse(time.RFC3339, req.EndTime)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid end_time format. Use RFC3339 (e.g., 2024-01-15T11:00:00Z)"})
-		return
-	}
-
-	// Validate that end time is after start time
-	if endTime.Before(startTime) || endTime.Equal(startTime) {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "end_time must be after start_time"})
-		return
-	}
-
-	slot, err := h.repo.CreateTimeSlot(gymID, startTime, endTime, req.Capacity)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create time slot"})
+		switch err {
+		case ErrGymNotFound:
+			c.JSON(http.StatusNotFound, api.ErrorResponse{Error: "Gym not found"})
+		case ErrTimeSlotInvalid:
+			c.JSON(http.StatusBadRequest, api.ErrorResponse{Error: "Invalid time slot data"})
+		default:
+			c.JSON(http.StatusInternalServerError, api.ErrorResponse{Error: "Failed to create time slot"})
+		}
 		return
 	}
 
 	c.JSON(http.StatusCreated, slot)
 }
 
+// @Summary      List time slots for a gym
+// @Tags         gyms,admin
+// @Produce      json
+// @Security     BearerAuth
+// @Param        gymID path int true "Gym ID"
+// @Success      200 {array} gym.TimeSlotWithAvailability
+// @Failure      400 {object} api.ErrorResponse
+// @Failure      401 {object} api.ErrorResponse
+// @Failure      404 {object} api.ErrorResponse
+// @Failure      500 {object} api.ErrorResponse
+// @Router       /gyms/{gymID}/slots [get]
+// @Router       /admin/gyms/{gymID}/slots [get]
 func (h *Handler) ListTimeSlots(c *gin.Context) {
 	gymIDStr := c.Param("gymID")
 	gymID, err := strconv.Atoi(gymIDStr)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid gym ID"})
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{Error: "Invalid gym ID"})
 		return
 	}
 
-	_, err = h.repo.GetGymByID(gymID)
-	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Gym not found"})
-		return
-	}
-
+	ctx := c.Request.Context()
 	onlyFuture := !strings.Contains(c.Request.URL.Path, "/admin/")
-	slots, err := h.repo.GetTimeSlotsWithAvailability(gymID, onlyFuture)
+	slots, err := h.service.GetTimeSlots(ctx, gymID, onlyFuture)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch time slots"})
+		switch err {
+		case ErrGymNotFound:
+			c.JSON(http.StatusNotFound, api.ErrorResponse{Error: "Gym not found"})
+		default:
+			c.JSON(http.StatusInternalServerError, api.ErrorResponse{Error: "Failed to fetch time slots"})
+		}
 		return
 	}
 

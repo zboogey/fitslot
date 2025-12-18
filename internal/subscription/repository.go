@@ -7,15 +7,15 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
-type Repository struct {
+type repository struct {
 	db *sqlx.DB
 }
 
-func NewRepository(db *sqlx.DB) *Repository {
-	return &Repository{db: db}
+func NewRepository(db *sqlx.DB) Repository {
+	return &repository{db: db}
 }
 
-func (r *Repository) CreateSubscription(
+func (r *repository) CreateSubscription(
 	ctx context.Context,
 	userID int,
 	gymID *int,
@@ -36,7 +36,7 @@ func (r *Repository) CreateSubscription(
 	return sub, err
 }
 
-func (r *Repository) GetActiveForUserAndGym(ctx context.Context, userID int, gymID int) (*Subscription, error) {
+func (r *repository) GetActiveForUserAndGym(ctx context.Context, userID int, gymID int) (*Subscription, error) {
 	sub := &Subscription{}
 	err := r.db.GetContext(ctx, sub, `
 		SELECT *
@@ -55,7 +55,7 @@ func (r *Repository) GetActiveForUserAndGym(ctx context.Context, userID int, gym
 	return sub, err
 }
 
-func (r *Repository) IncrementVisits(ctx context.Context, subID int) error {
+func (r *repository) IncrementVisits(ctx context.Context, subID int) error {
 	_, err := r.db.ExecContext(ctx, `
 		UPDATE subscriptions
 		SET visits_used = visits_used + 1,
@@ -65,7 +65,7 @@ func (r *Repository) IncrementVisits(ctx context.Context, subID int) error {
 	return err
 }
 
-func (r *Repository) ListActiveByUser(ctx context.Context, userID int) ([]*Subscription, error) {
+func (r *repository) ListActiveByUser(ctx context.Context, userID int) ([]*Subscription, error) {
 	subs := []*Subscription{}
 	err := r.db.SelectContext(ctx, &subs, `
 		SELECT *

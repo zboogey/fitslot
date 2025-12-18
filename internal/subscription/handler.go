@@ -4,24 +4,24 @@ import (
 	"errors"
 	"net/http"
 
+	"fitslot/internal/api"
 	"fitslot/internal/auth"
 	"fitslot/internal/wallet"
 
-	"github.com/gin-gonic/gin"
-	"github.com/jmoiron/sqlx"
-	"fitslot/internal/metrics"
 	"fitslot/internal/logger"
+	"fitslot/internal/metrics"
+	"github.com/gin-gonic/gin"
 )
 
 type Handler struct {
-	repo       *Repository
-	walletRepo *wallet.Repository
+	repo       Repository
+	walletRepo wallet.Repository
 }
 
-func NewHandler(db *sqlx.DB) *Handler {
+func NewHandler(repo Repository, walletRepo wallet.Repository) *Handler {
 	return &Handler{
-		repo:       NewRepository(db),
-		walletRepo: wallet.NewRepository(db),
+		repo:       repo,
+		walletRepo: walletRepo,
 	}
 }
 
@@ -86,27 +86,40 @@ type CreateSubscriptionResponse struct {
 	AmountCents  int64         `json:"amount_cents"`
 }
 
+// @Summary      Create subscription
+// @Description  Purchase a subscription plan using wallet balance
+// @Tags         subscriptions
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Param        request body subscription.CreateSubscriptionRequest true "Subscription purchase payload"
+// @Success      201 {object} subscription.CreateSubscriptionResponse
+// @Failure      400 {object} api.ErrorResponse
+// @Failure      401 {object} api.ErrorResponse
+// @Failure      402 {object} api.ErrorResponse
+// @Failure      500 {object} api.ErrorResponse
+// @Router       /subscriptions [post]
 func (h *Handler) Create(c *gin.Context) {
 	userID, ok := auth.GetUserID(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		c.JSON(http.StatusUnauthorized, api.ErrorResponse{Error: "unauthorized"})
 		return
 	}
 
 	var req CreateSubscriptionRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{Error: err.Error()})
 		return
 	}
 
 	plan, err := findPlan(req.Type)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "unknown subscription type"})
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{Error: "unknown subscription type"})
 		return
 	}
 
 	if plan.GymRequired && req.GymID == nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "gym_id is required for single_gym_lite"})
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{Error: "gym_id is required for single_gym_lite"})
 		return
 	}
 	if !plan.GymRequired {
@@ -117,10 +130,10 @@ func (h *Handler) Create(c *gin.Context) {
 
 	if err := h.walletRepo.AddTransaction(ctx, userID, -plan.PriceCents, "subscription_payment"); err != nil {
 		if err.Error() == "insufficient balance" {
-			c.JSON(http.StatusPaymentRequired, gin.H{"error": "insufficient wallet balance"})
+			c.JSON(http.StatusPaymentRequired, api.ErrorResponse{Error: "insufficient wallet balance"})
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to charge wallet"})
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Error: "failed to charge wallet"})
 		return
 	}
 
@@ -128,7 +141,7 @@ func (h *Handler) Create(c *gin.Context) {
 	sub, err := h.repo.CreateSubscription(ctx, userID, req.GymID, subType, plan.PriceCents, plan.VisitsLimit)
 	if err != nil {
 		logger.Errorf("Failed to create subscription for user %d: %v", userID, err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create subscription"})
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Error: "failed to create subscription"})
 		return
 	}
 	logger.Infof("Subscription created: Type=%s, User=%d", plan.Type, userID)
@@ -141,22 +154,37 @@ func (h *Handler) Create(c *gin.Context) {
 	})
 }
 
+// @Summary      List my subscriptions
+// @Tags         subscriptions
+// @Produce      json
+// @Security     BearerAuth
+// @Success      200 {array} subscription.Subscription
+// @Failure      401 {object} api.ErrorResponse
+// @Failure      500 {object} api.ErrorResponse
+// @Router       /subscriptions [get]
 func (h *Handler) ListMy(c *gin.Context) {
 	userID, ok := auth.GetUserID(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		c.JSON(http.StatusUnauthorized, api.ErrorResponse{Error: "unauthorized"})
 		return
 	}
 
 	subs, err := h.repo.ListActiveByUser(c.Request.Context(), userID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load subscriptions"})
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Error: "failed to load subscriptions"})
 		return
 	}
 
 	c.JSON(http.StatusOK, subs)
 }
 
+// @Summary      List subscription plans
+// @Tags         subscriptions
+// @Produce      json
+// @Security     BearerAuth
+// @Success      200 {array} subscription.Plan
+// @Failure      401 {object} api.ErrorResponse
+// @Router       /subscriptions/plans [get]
 func (h *Handler) ListPlans(c *gin.Context) {
 	c.JSON(http.StatusOK, getPlans())
 }

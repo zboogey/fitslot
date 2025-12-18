@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"fitslot/internal/auth"
 	"fitslot/internal/booking"
 	"fitslot/internal/config"
@@ -9,30 +10,50 @@ import (
 	"fitslot/internal/subscription"
 	"fitslot/internal/user"
 	"fitslot/internal/wallet"
-	
+	"net/http"
+
 	"github.com/gin-gonic/gin"
 	"github.com/jmoiron/sqlx"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 type Server struct {
-	router *gin.Engine
-	db     *sqlx.DB
-	config *config.Config
-	email  *email.Service
+	router     *gin.Engine
+	db         *sqlx.DB
+	config     *config.Config
+	email      *email.Service
+	httpServer *http.Server
 }
 
 func New(db *sqlx.DB, cfg *config.Config, emailService *email.Service) *Server {
 	router := gin.Default()
 	router.Use(MetricsMiddleware())
+	router.Use(RequestLoggingMiddleware())
+	router.Use(RateLimitMiddleware(100, 200)) // 100 requests per second, burst of 200
 	router.Use(corsMiddleware())
 
-	userHandler := user.NewHandler(db, cfg.JWTSecret)
-	gymHandler := gym.NewHandler(db)
-	bookingHandler := booking.NewHandler(db, emailService)
-	walletHandler := wallet.NewHandler(db)
-	subscriptionHandler := subscription.NewHandler(db)
-	router.GET("/metrics", gin.WrapH(promhttp.Handler()))
+	userRepo := user.NewRepository(db)
+	gymRepo := gym.NewRepository(db)
+	bookingRepo := booking.NewRepository(db)
+	walletRepo := wallet.NewRepository(db)
+	subscriptionRepo := subscription.NewRepository(db)
+
+	userService := user.NewService(userRepo, cfg.JWTSecret)
+	gymService := gym.NewService(gymRepo)
+	bookingService := booking.NewService(
+		bookingRepo,
+		gymRepo,
+		subscriptionRepo,
+		walletRepo,
+		userRepo,
+		emailService,
+	)
+
+	userHandler := user.NewHandler(userService, cfg.JWTSecret)
+	gymHandler := gym.NewHandler(gymService)
+	bookingHandler := booking.NewHandler(bookingService)
+	walletHandler := wallet.NewHandler(walletRepo)
+	subscriptionHandler := subscription.NewHandler(subscriptionRepo, walletRepo)
+	router.GET("/metrics", Metrics())
 
 	public := router.Group("/auth")
 	{
@@ -71,25 +92,10 @@ func New(db *sqlx.DB, cfg *config.Config, emailService *email.Service) *Server {
 		admin.GET("/gyms/:gymID/bookings", bookingHandler.ListBookingsByGym)
 	}
 
-	router.GET("/health", func(c *gin.Context) {
-		c.JSON(200, gin.H{"status": "ok"})
-	})
-	
-	router.GET("/test-email", func(c *gin.Context) {
-		testEmail := c.Query("email")
-		if testEmail == "" {
-			c.JSON(400, gin.H{"error": "email parameter required"})
-			return
-		}
-		
-		err := emailService.Send(c.Request.Context(), testEmail, "Test User", "Test Email from FitSlot", "Email is working!")
-		if err != nil {
-			c.JSON(500, gin.H{"error": err.Error()})
-			return
-		}
-		
-		c.JSON(200, gin.H{"status": "Email queued successfully"})
-	})
+	SetupSwagger(router)
+
+	router.GET("/health", Health)
+	router.GET("/test-email", TestEmail(emailService))
 
 	return &Server{
 		router: router,
@@ -101,7 +107,18 @@ func New(db *sqlx.DB, cfg *config.Config, emailService *email.Service) *Server {
 
 func (s *Server) Start(port string) error {
 	addr := ":" + port
-	return s.router.Run(addr)
+	s.httpServer = &http.Server{
+		Addr:    addr,
+		Handler: s.router,
+	}
+	return s.httpServer.ListenAndServe()
+}
+
+func (s *Server) Shutdown(ctx context.Context) error {
+	if s.httpServer != nil {
+		return s.httpServer.Shutdown(ctx)
+	}
+	return nil
 }
 
 func corsMiddleware() gin.HandlerFunc {

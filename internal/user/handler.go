@@ -3,62 +3,51 @@ package user
 import (
 	"net/http"
 
+	"fitslot/internal/api"
 	"fitslot/internal/auth"
 
 	"github.com/gin-gonic/gin"
-	"github.com/jmoiron/sqlx"
 )
 
 type Handler struct {
-	repo      *Repository
+	service   Service
 	jwtSecret string
 }
 
-func NewHandler(db *sqlx.DB, jwtSecret string) *Handler {
+func NewHandler(service Service, jwtSecret string) *Handler {
 	return &Handler{
-		repo:      NewRepository(db),
+		service:   service,
 		jwtSecret: jwtSecret,
 	}
 }
 
+// @Summary      Register user
+// @Description  Register a new user (member role by default) and return access/refresh tokens
+// @Tags         auth
+// @Accept       json
+// @Produce      json
+// @Param        request body user.RegisterRequest true "Register payload"
+// @Success      201 {object} user.LoginResponse
+// @Failure      400 {object} api.ErrorResponse
+// @Failure      409 {object} api.ErrorResponse
+// @Failure      500 {object} api.ErrorResponse
+// @Router       /auth/register [post]
 func (h *Handler) Register(c *gin.Context) {
 	var req RegisterRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{Error: err.Error()})
 		return
 	}
 
-	exists, err := h.repo.EmailExists(req.Email)
+	ctx := c.Request.Context()
+	user, accessToken, refreshToken, err := h.service.Register(ctx, req)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
-		return
-	}
-	if exists {
-		c.JSON(http.StatusConflict, gin.H{"error": "Email already registered"})
-		return
-	}
-
-	passwordHash, err := auth.HashPassword(req.Password)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to hash password"})
-		return
-	}
-
-	user, err := h.repo.Create(req.Name, req.Email, passwordHash, "member")
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create user"})
-		return
-	}
-
-	accessToken, refreshToken, err := auth.GenerateTokens(
-		user.ID,
-		user.Email,
-		user.Role,
-		h.jwtSecret,
-		h.jwtSecret,
-	)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate tokens"})
+		switch err {
+		case ErrEmailExists:
+			c.JSON(http.StatusConflict, api.ErrorResponse{Error: "Email already registered"})
+		default:
+			c.JSON(http.StatusInternalServerError, api.ErrorResponse{Error: "Failed to register user"})
+		}
 		return
 	}
 
@@ -69,33 +58,28 @@ func (h *Handler) Register(c *gin.Context) {
 	})
 }
 
+// @Summary      Login
+// @Description  Login with email and password to receive access/refresh tokens
+// @Tags         auth
+// @Accept       json
+// @Produce      json
+// @Param        request body user.LoginRequest true "Login payload"
+// @Success      200 {object} user.LoginResponse
+// @Failure      400 {object} api.ErrorResponse
+// @Failure      401 {object} api.ErrorResponse
+// @Failure      500 {object} api.ErrorResponse
+// @Router       /auth/login [post]
 func (h *Handler) Login(c *gin.Context) {
 	var req LoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{Error: err.Error()})
 		return
 	}
 
-	user, err := h.repo.FindByEmail(req.Email)
+	ctx := c.Request.Context()
+	user, accessToken, refreshToken, err := h.service.Login(ctx, req)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid email or password"})
-		return
-	}
-
-	if !auth.CheckPassword(user.PasswordHash, req.Password) {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid email or password"})
-		return
-	}
-
-	accessToken, refreshToken, err := auth.GenerateTokens(
-		user.ID,
-		user.Email,
-		user.Role,
-		h.jwtSecret,
-		h.jwtSecret,
-	)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate tokens"})
+		c.JSON(http.StatusUnauthorized, api.ErrorResponse{Error: "Invalid email or password"})
 		return
 	}
 
@@ -106,50 +90,57 @@ func (h *Handler) Login(c *gin.Context) {
 	})
 }
 
+// @Summary      Get current user
+// @Tags         users
+// @Produce      json
+// @Security     BearerAuth
+// @Success      200 {object} user.User
+// @Failure      401 {object} api.ErrorResponse
+// @Failure      404 {object} api.ErrorResponse
+// @Router       /me [get]
 func (h *Handler) GetMe(c *gin.Context) {
 	userID, exists := auth.GetUserID(c)
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+		c.JSON(http.StatusUnauthorized, api.ErrorResponse{Error: "User not authenticated"})
 		return
 	}
 
-	user, err := h.repo.FindByID(userID)
+	ctx := c.Request.Context()
+	user, err := h.service.GetByID(ctx, userID)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+		c.JSON(http.StatusNotFound, api.ErrorResponse{Error: "User not found"})
 		return
 	}
 
 	c.JSON(http.StatusOK, user)
 }
+
+// @Summary      Refresh access token
+// @Description  Exchange a refresh token for a new access token
+// @Tags         auth
+// @Accept       json
+// @Produce      json
+// @Param        request body user.RefreshTokenRequest true "Refresh token payload"
+// @Success      200 {object} user.RefreshTokenResponse
+// @Failure      400 {object} api.ErrorResponse
+// @Failure      401 {object} api.ErrorResponse
+// @Router       /auth/refresh [post]
 func (h *Handler) RefreshToken(c *gin.Context) {
-	var req struct {
-		RefreshToken string `json:"refresh_token"`
-	}
-	if err := c.ShouldBindJSON(&req); err != nil || req.RefreshToken == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "refresh_token is required"})
+	var req RefreshTokenRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{Error: err.Error()})
 		return
 	}
 
-	_, claims, err := auth.RefreshAccessToken(req.RefreshToken, h.jwtSecret, h.jwtSecret)
+	ctx := c.Request.Context()
+	newAccessToken, user, err := h.service.RefreshToken(ctx, req.RefreshToken, h.jwtSecret)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid or expired refresh token"})
+		c.JSON(http.StatusUnauthorized, api.ErrorResponse{Error: "invalid or expired refresh token"})
 		return
 	}
 
-	user, err := h.repo.FindByID(claims.UserID)
-	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
-		return
-	}
-
-	newAccessToken, err := auth.GenerateAccessToken(user.ID, user.Email, user.Role, h.jwtSecret)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to generate access token"})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"access_token": newAccessToken,
-		"user":         user,
+	c.JSON(http.StatusOK, RefreshTokenResponse{
+		AccessToken: newAccessToken,
+		User:        *user,
 	})
 }

@@ -20,3 +20,8 @@ type Transaction struct {
 	BalanceAfter int64     `db:"balance_after" json:"balance_after"`
 	CreatedAt    time.Time `db:"created_at" json:"created_at"`
 }
+
+type TopUpResponse struct {
+	Message string `json:"message" example:"wallet recharged"`
+	Wallet  Wallet `json:"wallet"`
+}

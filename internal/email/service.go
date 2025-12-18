@@ -7,9 +7,9 @@ import (
 	"net/smtp"
 	"time"
 
-	"github.com/redis/go-redis/v9"
 	"fitslot/internal/logger"
 	"fitslot/internal/metrics"
+	"github.com/redis/go-redis/v9"
 )
 
 type EmailJob struct {

@@ -12,15 +12,15 @@ var (
 	ErrInsufficientBalance = errors.New("insufficient balance")
 )
 
-type Repository struct {
+type repository struct {
 	db *sqlx.DB
 }
 
-func NewRepository(db *sqlx.DB) *Repository {
-	return &Repository{db: db}
+func NewRepository(db *sqlx.DB) Repository {
+	return &repository{db: db}
 }
 
-func (r *Repository) GetOrCreateWallet(ctx context.Context, userID int) (*Wallet, error) {
+func (r *repository) GetOrCreateWallet(ctx context.Context, userID int) (*Wallet, error) {
 	w := &Wallet{}
 	err := r.db.GetContext(ctx, w, `SELECT * FROM wallets WHERE user_id = $1`, userID)
 	if err == nil {
@@ -44,7 +44,7 @@ func (r *Repository) GetOrCreateWallet(ctx context.Context, userID int) (*Wallet
 	return w, nil
 }
 
-func (r *Repository) AddTransaction(ctx context.Context, userID int, amountCents int64, txType string) error {
+func (r *repository) AddTransaction(ctx context.Context, userID int, amountCents int64, txType string) error {
 	tx, err := r.db.BeginTxx(ctx, nil)
 	if err != nil {
 		return err
@@ -102,14 +102,14 @@ func (r *Repository) AddTransaction(ctx context.Context, userID int, amountCents
 	return tx.Commit()
 }
 
-func (r *Repository) TopUp(ctx context.Context, userID int, amountCents int64) error {
+func (r *repository) TopUp(ctx context.Context, userID int, amountCents int64) error {
 	if amountCents <= 0 {
 		return errors.New("top up amount must be positive")
 	}
 	return r.AddTransaction(ctx, userID, amountCents, "topup")
 }
 
-func (r *Repository) GetTransactions(ctx context.Context, userID int, limit, offset int) ([]Transaction, error) {
+func (r *repository) GetTransactions(ctx context.Context, userID int, limit, offset int) ([]Transaction, error) {
 	if limit <= 0 {
 		limit = 50
 	}

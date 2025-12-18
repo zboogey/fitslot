@@ -2,8 +2,7 @@ package logger
 
 import (
 	"bytes"
-	"log"
-	"strings"
+	"log/slog"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -11,148 +10,112 @@ import (
 
 func TestInit(t *testing.T) {
 	Init()
-
-	assert.NotNil(t, InfoLogger)
-	assert.NotNil(t, ErrorLogger)
-	assert.NotNil(t, DebugLogger)
+	assert.NotNil(t, log)
 }
 
 func TestInfo(t *testing.T) {
 	var buf bytes.Buffer
-	InfoLogger = log.New(&buf, "INFO: ", log.Lshortfile)
+	// Create a new logger for testing
+	testLogger := NewJSONHandler(&buf, nil)
+	log = New(testLogger)
 
 	Info("test message")
 
 	output := buf.String()
-	assert.Contains(t, output, "INFO:")
 	assert.Contains(t, output, "test message")
-}
-
-func TestInfof(t *testing.T) {
-	var buf bytes.Buffer
-	InfoLogger = log.New(&buf, "INFO: ", log.Lshortfile)
-
-	Infof("test %s %d", "message", 42)
-
-	output := buf.String()
-	assert.Contains(t, output, "INFO:")
-	assert.Contains(t, output, "test message 42")
 }
 
 func TestError(t *testing.T) {
 	var buf bytes.Buffer
-	ErrorLogger = log.New(&buf, "ERROR: ", log.Lshortfile)
+	testLogger := NewJSONHandler(&buf, nil)
+	log = New(testLogger)
 
-	Error("error occurred")
-
-	output := buf.String()
-	assert.Contains(t, output, "ERROR:")
-	assert.Contains(t, output, "error occurred")
-}
-
-func TestErrorf(t *testing.T) {
-	var buf bytes.Buffer
-	ErrorLogger = log.New(&buf, "ERROR: ", log.Lshortfile)
-
-	Errorf("error code: %d, message: %s", 500, "internal error")
+	Error("test error")
 
 	output := buf.String()
-	assert.Contains(t, output, "ERROR:")
-	assert.Contains(t, output, "error code: 500")
-	assert.Contains(t, output, "message: internal error")
+	assert.Contains(t, output, "test error")
 }
 
 func TestDebug(t *testing.T) {
 	var buf bytes.Buffer
-	DebugLogger = log.New(&buf, "DEBUG: ", log.Lshortfile)
+	opts := &slog.HandlerOptions{
+		Level: slog.LevelDebug,
+	}
+	testLogger := NewJSONHandler(&buf, opts)
+	log = New(testLogger)
 
-	Debug("debug info")
+	Debug("test debug")
 
 	output := buf.String()
-	assert.Contains(t, output, "DEBUG:")
-	assert.Contains(t, output, "debug info")
+	assert.Contains(t, output, "test debug")
+}
+
+func TestInfof(t *testing.T) {
+	var buf bytes.Buffer
+	testLogger := NewJSONHandler(&buf, nil)
+	log = New(testLogger)
+
+	Infof("test %s", "message")
+
+	output := buf.String()
+	// slog formats differently - check for the message content
+	assert.Contains(t, output, "message")
+}
+
+func TestErrorf(t *testing.T) {
+	var buf bytes.Buffer
+	testLogger := NewJSONHandler(&buf, nil)
+	log = New(testLogger)
+
+	Errorf("test %s", "error")
+
+	output := buf.String()
+	// slog formats differently - check for the message content
+	assert.Contains(t, output, "error")
 }
 
 func TestDebugf(t *testing.T) {
 	var buf bytes.Buffer
-	DebugLogger = log.New(&buf, "DEBUG: ", log.Lshortfile)
+	opts := &slog.HandlerOptions{
+		Level: slog.LevelDebug,
+	}
+	testLogger := NewJSONHandler(&buf, opts)
+	log = New(testLogger)
 
-	Debugf("variable x = %d", 100)
+	Debugf("test %s", "debug")
 
 	output := buf.String()
-	assert.Contains(t, output, "DEBUG:")
-	assert.Contains(t, output, "variable x = 100")
+	assert.Contains(t, output, "debug")
 }
 
-func TestMultipleLoggers(t *testing.T) {
-	var infoBuf bytes.Buffer
-	var errorBuf bytes.Buffer
-	var debugBuf bytes.Buffer
-
-	InfoLogger = log.New(&infoBuf, "INFO: ", 0)
-	ErrorLogger = log.New(&errorBuf, "ERROR: ", 0)
-	DebugLogger = log.New(&debugBuf, "DEBUG: ", 0)
-
-	Info("info message")
-	Error("error message")
-	Debug("debug message")
-
-	// Проверяем что каждый логгер пишет в свой буфер
-	assert.Contains(t, infoBuf.String(), "info message")
-	assert.Contains(t, errorBuf.String(), "error message")
-	assert.Contains(t, debugBuf.String(), "debug message")
-
-	// Проверяем что сообщения не попали в другие буферы
-	assert.NotContains(t, infoBuf.String(), "error message")
-	assert.NotContains(t, errorBuf.String(), "debug message")
-}
-
-func TestLoggerPrefix(t *testing.T) {
+func TestWithError(t *testing.T) {
 	var buf bytes.Buffer
-	InfoLogger = log.New(&buf, "INFO: ", 0)
-	ErrorLogger = log.New(&buf, "ERROR: ", 0)
-	DebugLogger = log.New(&buf, "DEBUG: ", 0)
+	testLogger := NewJSONHandler(&buf, nil)
+	log = New(testLogger)
 
-	Info("test1")
-	Error("test2")
-	Debug("test3")
+	err := assert.AnError
+	logger := WithError(err)
+	logger.Info("test with error")
 
 	output := buf.String()
-	lines := strings.Split(strings.TrimSpace(output), "\n")
-
-	assert.Equal(t, 3, len(lines))
-	assert.True(t, strings.HasPrefix(lines[0], "INFO:"))
-	assert.True(t, strings.HasPrefix(lines[1], "ERROR:"))
-	assert.True(t, strings.HasPrefix(lines[2], "DEBUG:"))
+	assert.Contains(t, output, "test with error")
+	assert.Contains(t, output, "error")
 }
 
-func TestLoggerNotInitialized(t *testing.T) {
-	// Сохраняем текущие логгеры
-	oldInfo := InfoLogger
-	oldError := ErrorLogger
-	oldDebug := DebugLogger
+func TestWithFields(t *testing.T) {
+	var buf bytes.Buffer
+	testLogger := NewJSONHandler(&buf, nil)
+	log = New(testLogger)
 
-	// Обнуляем логгеры
-	InfoLogger = nil
-	ErrorLogger = nil
-	DebugLogger = nil
+	fields := map[string]interface{}{
+		"key1": "value1",
+		"key2": 123,
+	}
+	logger := WithFields(fields)
+	logger.Info("test with fields")
 
-	// Восстанавливаем после теста
-	defer func() {
-		InfoLogger = oldInfo
-		ErrorLogger = oldError
-		DebugLogger = oldDebug
-	}()
-
-	// Проверяем что логгеры nil
-	assert.Nil(t, InfoLogger)
-	assert.Nil(t, ErrorLogger)
-	assert.Nil(t, DebugLogger)
-
-	// После Init они должны быть инициализированы
-	Init()
-
-	assert.NotNil(t, InfoLogger)
-	assert.NotNil(t, ErrorLogger)
-	assert.NotNil(t, DebugLogger)
+	output := buf.String()
+	assert.Contains(t, output, "test with fields")
+	assert.Contains(t, output, "key1")
+	assert.Contains(t, output, "value1")
 }

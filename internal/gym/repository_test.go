@@ -1,6 +1,7 @@
 package gym
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -17,12 +18,14 @@ func TestCreateGym(t *testing.T) {
 	dbx := sqlx.NewDb(db, "sqlmock")
 	repo := NewRepository(dbx)
 
+	ctx := context.Background()
+
 	mock.ExpectQuery(`INSERT INTO gyms.*`).
 		WithArgs("Gym A", "City X").
 		WillReturnRows(sqlmock.NewRows([]string{"id", "name", "location", "created_at"}).
 			AddRow(1, "Gym A", "City X", time.Now()))
 
-	gym, err := repo.CreateGym("Gym A", "City X")
+	gym, err := repo.CreateGym(ctx, "Gym A", "City X")
 	assert.NoError(t, err)
 	assert.Equal(t, 1, gym.ID)
 	assert.Equal(t, "Gym A", gym.Name)
@@ -38,12 +41,14 @@ func TestGetAllGyms(t *testing.T) {
 	dbx := sqlx.NewDb(db, "sqlmock")
 	repo := NewRepository(dbx)
 
+	ctx := context.Background()
+
 	mock.ExpectQuery(`SELECT id, name, location, created_at FROM gyms.*`).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "name", "location", "created_at"}).
 			AddRow(1, "Gym A", "City X", time.Now()).
 			AddRow(2, "Gym B", "City Y", time.Now()))
 
-	gyms, err := repo.GetAllGyms()
+	gyms, err := repo.GetAllGyms(ctx)
 	assert.NoError(t, err)
 	assert.Len(t, gyms, 2)
 	assert.NoError(t, mock.ExpectationsWereMet())
@@ -57,12 +62,14 @@ func TestGetGymByID(t *testing.T) {
 	dbx := sqlx.NewDb(db, "sqlmock")
 	repo := NewRepository(dbx)
 
+	ctx := context.Background()
+
 	mock.ExpectQuery(`SELECT id, name, location, created_at FROM gyms WHERE id = \$1`).
 		WithArgs(1).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "name", "location", "created_at"}).
 			AddRow(1, "Gym A", "City X", time.Now()))
 
-	gym, err := repo.GetGymByID(1)
+	gym, err := repo.GetGymByID(ctx, 1)
 	assert.NoError(t, err)
 	assert.Equal(t, 1, gym.ID)
 	assert.NoError(t, mock.ExpectationsWereMet())
@@ -76,6 +83,7 @@ func TestCreateTimeSlot(t *testing.T) {
 	dbx := sqlx.NewDb(db, "sqlmock")
 	repo := NewRepository(dbx)
 
+	ctx := context.Background()
 	start := time.Now()
 	end := start.Add(time.Hour)
 
@@ -84,7 +92,7 @@ func TestCreateTimeSlot(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows([]string{"id", "gym_id", "start_time", "end_time", "capacity", "created_at"}).
 			AddRow(1, 1, start, end, 10, time.Now()))
 
-	slot, err := repo.CreateTimeSlot(1, start, end, 10)
+	slot, err := repo.CreateTimeSlot(ctx, 1, start, end, 10)
 	assert.NoError(t, err)
 	assert.Equal(t, 1, slot.ID)
 	assert.Equal(t, 10, slot.Capacity)
@@ -98,6 +106,7 @@ func TestGetTimeSlotsWithAvailability(t *testing.T) {
 	dbx := sqlx.NewDb(db, "sqlmock")
 	repo := NewRepository(dbx)
 
+	ctx := context.Background()
 	start := time.Now().Add(time.Hour)
 	end := start.Add(time.Hour)
 
@@ -112,7 +121,7 @@ func TestGetTimeSlotsWithAvailability(t *testing.T) {
 		WithArgs(1).
 		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(3))
 
-	slots, err := repo.GetTimeSlotsWithAvailability(1, true)
+	slots, err := repo.GetTimeSlotsWithAvailability(ctx, 1, true)
 	assert.NoError(t, err)
 	assert.Len(t, slots, 1)
 	assert.Equal(t, 7, slots[0].Available)

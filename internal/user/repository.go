@@ -1,20 +1,23 @@
 package user
 
 import (
+	"context"
 	"errors"
 
 	"github.com/jmoiron/sqlx"
 )
 
-type Repository struct {
+var ErrUserNotFound = errors.New("user not found")
+
+type repository struct {
 	db *sqlx.DB
 }
 
-func NewRepository(db *sqlx.DB) *Repository {
-	return &Repository{db: db}
+func NewRepository(db *sqlx.DB) Repository {
+	return &repository{db: db}
 }
 
-func (r *Repository) Create(name, email, passwordHash, role string) (*User, error) {
+func (r *repository) Create(ctx context.Context, name, email, passwordHash, role string) (*User, error) {
 	query := `
 		INSERT INTO users (name, email, password_hash, role)
 		VALUES ($1, $2, $3, $4)
@@ -22,7 +25,7 @@ func (r *Repository) Create(name, email, passwordHash, role string) (*User, erro
 	`
 
 	var user User
-	err := r.db.Get(&user, query, name, email, passwordHash, role)
+	err := r.db.GetContext(ctx, &user, query, name, email, passwordHash, role)
 	if err != nil {
 		return nil, err
 	}
@@ -30,7 +33,7 @@ func (r *Repository) Create(name, email, passwordHash, role string) (*User, erro
 	return &user, nil
 }
 
-func (r *Repository) FindByEmail(email string) (*User, error) {
+func (r *repository) FindByEmail(ctx context.Context, email string) (*User, error) {
 	query := `
 		SELECT id, name, email, password_hash, role, created_at
 		FROM users
@@ -38,7 +41,7 @@ func (r *Repository) FindByEmail(email string) (*User, error) {
 	`
 
 	var user User
-	err := r.db.Get(&user, query, email)
+	err := r.db.GetContext(ctx, &user, query, email)
 	if err != nil {
 		return nil, err
 	}
@@ -46,7 +49,7 @@ func (r *Repository) FindByEmail(email string) (*User, error) {
 	return &user, nil
 }
 
-func (r *Repository) FindByID(id int) (*User, error) {
+func (r *repository) FindByID(ctx context.Context, id int) (*User, error) {
 	query := `
 		SELECT id, name, email, password_hash, role, created_at
 		FROM users
@@ -54,7 +57,7 @@ func (r *Repository) FindByID(id int) (*User, error) {
 	`
 
 	var user User
-	err := r.db.Get(&user, query, id)
+	err := r.db.GetContext(ctx, &user, query, id)
 	if err != nil {
 		return nil, err
 	}
@@ -62,17 +65,15 @@ func (r *Repository) FindByID(id int) (*User, error) {
 	return &user, nil
 }
 
-func (r *Repository) EmailExists(email string) (bool, error) {
+func (r *repository) EmailExists(ctx context.Context, email string) (bool, error) {
 	query := `SELECT EXISTS(SELECT 1 FROM users WHERE email = $1)`
 
 	var exists bool
-	err := r.db.Get(&exists, query, email)
+	err := r.db.GetContext(ctx, &exists, query, email)
 	if err != nil {
 		return false, err
 	}
 
 	return exists, nil
 }
-
-var ErrUserNotFound = errors.New("user not found")
 

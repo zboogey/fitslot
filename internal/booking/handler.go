@@ -1,55 +1,47 @@
 package booking
 
 import (
-	"errors"
 	"net/http"
 	"strconv"
-	"time"
 
+	"fitslot/internal/api"
 	"fitslot/internal/auth"
-	"fitslot/internal/gym"
-	"fitslot/internal/subscription"
-	"fitslot/internal/wallet"
-	"fitslot/internal/email" 
-	"fitslot/internal/user" 
 	"fitslot/internal/logger"
-	"github.com/gin-gonic/gin"
-	"github.com/jmoiron/sqlx"
 	"fitslot/internal/metrics"
-)
+	"fitslot/internal/subscription"
 
-var (
-	ErrSlotNotFound  = errors.New("time slot not found")
-	ErrSlotInPast    = errors.New("cannot book a slot in the past")
-	ErrSlotFull      = errors.New("time slot is full")
-	ErrAlreadyBooked = errors.New("user already has a booking for this slot")
+	"github.com/gin-gonic/gin"
 )
 
 type Handler struct {
-	repo             *Repository
-	gymRepo          *gym.Repository
-	subscriptionRepo *subscription.Repository
-	walletRepo       *wallet.Repository
-	userRepo         *user.Repository
-	email            *email.Service
+	service Service
 }
 
-func NewHandler(db *sqlx.DB, emailService *email.Service) *Handler {
+func NewHandler(service Service) *Handler {
 	return &Handler{
-		repo:             NewRepository(db),
-		gymRepo:          gym.NewRepository(db),
-		subscriptionRepo: subscription.NewRepository(db),
-		walletRepo:       wallet.NewRepository(db),
-		userRepo:         user.NewRepository(db),
-		email:            emailService,
+		service: service,
 	}
 }
 
+// @Summary      Book a time slot
+// @Description  Create a booking for the current user (paid with wallet or subscription)
+// @Tags         bookings
+// @Produce      json
+// @Security     BearerAuth
+// @Param        slotID path int true "Time slot ID"
+// @Success      201 {object} BookSlotResponse
+// @Failure      400 {object} api.ErrorResponse
+// @Failure      401 {object} api.ErrorResponse
+// @Failure      402 {object} api.ErrorResponse
+// @Failure      404 {object} api.ErrorResponse
+// @Failure      409 {object} api.ErrorResponse
+// @Failure      500 {object} api.ErrorResponse
+// @Router       /slots/{slotID}/book [post]
 func (h *Handler) BookSlot(c *gin.Context) {
 	userID, exists := auth.GetUserID(c)
 	if !exists {
 		logger.Error("Unauthorized booking attempt")
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+		c.JSON(http.StatusUnauthorized, api.ErrorResponse{Error: "User not authenticated"})
 		return
 	}
 
@@ -57,121 +49,79 @@ func (h *Handler) BookSlot(c *gin.Context) {
 	slotID, err := strconv.Atoi(slotIDStr)
 	if err != nil {
 		logger.Errorf("Invalid slot ID: %s", slotIDStr)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid slot ID"})
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{Error: "Invalid slot ID"})
 		return
 	}
 	logger.Infof("User %d booking slot %d", userID, slotID)
 
-	slot, err := h.gymRepo.GetTimeSlotByID(slotID)
-	if err != nil {
-		logger.Errorf("Slot %d not found: %v", slotID, err)
-		c.JSON(http.StatusNotFound, gin.H{"error": "Time slot not found"})
-		return
-	}
-
-	if slot.StartTime.Before(time.Now()) {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Cannot book a slot in the past"})
-		return
-	}
-
-	bookedCount, err := h.repo.CountActiveBookingsForSlot(slotID)
-	if err != nil {
-		logger.Errorf("Database error checking bookings for slot %d: %v", slotID, err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
-		return
-	}
-
-	if bookedCount >= slot.Capacity {
-		c.JSON(http.StatusConflict, gin.H{"error": "Time slot is full"})
-		return
-	}
-
-	hasBooking, err := h.repo.UserHasBookingForSlot(userID, slotID)
-	if err != nil {
-		logger.Errorf("Database error checking user booking: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
-		return
-	}
-
-	if hasBooking {
-		c.JSON(http.StatusConflict, gin.H{"error": "You already have a booking for this slot"})
-		return
-	}
-
 	ctx := c.Request.Context()
-
-	useSubscription := false
-	var activeSub *subscription.Subscription
-
-	sub, err := h.subscriptionRepo.GetActiveForUserAndGym(ctx, userID, slot.GymID)
-	if err == nil && sub.Status == subscription.StatusActive {
-		if sub.VisitsLimit == nil {
-			useSubscription = true
-			activeSub = sub
-		} else if sub.VisitsUsed < *sub.VisitsLimit {
-			useSubscription = true
-			activeSub = sub
-		}
-	}
-
-	booking, err := h.repo.CreateBooking(userID, slotID)
+	booking, paymentMethod, paymentDetails, err := h.service.BookSlot(ctx, userID, slotID)
 	if err != nil {
-		logger.Errorf("Failed to create booking for user %d, slot %d: %v", userID, slotID, err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create booking"})
+		switch err.Error() {
+		case "time slot not found":
+			c.JSON(http.StatusNotFound, api.ErrorResponse{Error: "Time slot not found"})
+		case "cannot book a slot in the past":
+			c.JSON(http.StatusBadRequest, api.ErrorResponse{Error: "Cannot book a slot in the past"})
+		case "time slot is full":
+			c.JSON(http.StatusConflict, api.ErrorResponse{Error: "Time slot is full"})
+		case "user already has a booking for this slot":
+			c.JSON(http.StatusConflict, api.ErrorResponse{Error: "You already have a booking for this slot"})
+		case "insufficient wallet balance":
+			c.JSON(http.StatusPaymentRequired, api.ErrorResponse{Error: "insufficient wallet balance"})
+		default:
+			logger.Errorf("Failed to create booking for user %d, slot %d: %v", userID, slotID, err)
+			c.JSON(http.StatusInternalServerError, api.ErrorResponse{Error: "Failed to create booking"})
+		}
 		return
 	}
 
 	logger.Infof("Booking created: ID=%d, User=%d, Slot=%d", booking.ID, userID, slotID)
+	metrics.RecordBooking("success", paymentMethod)
 
-	if useSubscription && activeSub != nil {
-		if err := h.subscriptionRepo.IncrementVisits(ctx, activeSub.ID); err != nil {
-			// Бронь уже есть, поэтому просто вернём warning
-			logger.Errorf("Failed to increment subscription visits: %v", err)
-			c.JSON(http.StatusCreated, gin.H{
-				"booking":      booking,
-				"paid_with":    "subscription",
-				"subscription": activeSub,
-				"warning":      "booking created, but failed to update subscription usage",
-			})
-			return
+	var resp BookSlotResponse
+	resp.Booking = booking
+	resp.PaidWith = paymentMethod
+
+	if paymentMethod == "subscription" {
+		if sub, ok := paymentDetails.(*subscription.Subscription); ok {
+			resp.Subscription = sub
 		}
-		logger.Infof("Booking %d paid with subscription %d", booking.ID, activeSub.ID)
-		metrics.RecordBooking("success", "subscription")
-		c.JSON(http.StatusCreated, gin.H{
-			"booking":      booking,
-			"paid_with":    "subscription",
-			"subscription": activeSub,
-		})
-		return
-	}
-	
-	const priceCents int64 = 1000
-
-	if err := h.walletRepo.AddTransaction(ctx, userID, -priceCents, "booking_payment"); err != nil {
-		logger.Errorf("Wallet transaction failed for user %d: %v", userID, err)
-		if err.Error() == "insufficient balance" {
-			c.JSON(http.StatusPaymentRequired, gin.H{"error": "insufficient wallet balance"})
-			return
+	} else if paymentMethod == "wallet" {
+		if details, ok := paymentDetails.(map[string]interface{}); ok {
+			switch v := details["amount_cents"].(type) {
+			case int64:
+				resp.AmountCents = &v
+			case int:
+				vv := int64(v)
+				resp.AmountCents = &vv
+			case float64:
+				vv := int64(v)
+				resp.AmountCents = &vv
+			}
 		}
-
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to charge wallet"})
-		return
 	}
 
-	logger.Infof("Booking %d paid with wallet: %d cents", booking.ID, priceCents)
-	metrics.RecordBooking("success", "wallet")
-	c.JSON(http.StatusCreated, gin.H{
-		"booking":      booking,
-		"paid_with":    "wallet",
-		"amount_cents": priceCents,
-	})
+	c.JSON(http.StatusCreated, resp)
 }
 
+// @Summary      Cancel booking
+// @Description  Cancel a booking owned by the current user
+// @Tags         bookings
+// @Produce      json
+// @Security     BearerAuth
+// @Param        bookingID path int true "Booking ID"
+// @Success      200 {object} booking.CancelBookingResponse
+// @Failure      400 {object} api.ErrorResponse
+// @Failure      401 {object} api.ErrorResponse
+// @Failure      403 {object} api.ErrorResponse
+// @Failure      404 {object} api.ErrorResponse
+// @Failure      500 {object} api.ErrorResponse
+// @Router       /bookings/{bookingID}/cancel [post]
 func (h *Handler) CancelBooking(c *gin.Context) {
 	userID, exists := auth.GetUserID(c)
 	if !exists {
 		logger.Error("Unauthorized cancellation attempt")
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+		c.JSON(http.StatusUnauthorized, api.ErrorResponse{Error: "User not authenticated"})
 		return
 	}
 
@@ -179,85 +129,110 @@ func (h *Handler) CancelBooking(c *gin.Context) {
 	bookingID, err := strconv.Atoi(bookingIDStr)
 	if err != nil {
 		logger.Errorf("Invalid booking ID: %s", bookingIDStr)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid booking ID"})
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{Error: "Invalid booking ID"})
 		return
 	}
 
 	logger.Infof("User %d cancelling booking %d", userID, bookingID)
-	booking, err := h.repo.GetBookingByID(bookingID)
-	if err != nil {
-		logger.Errorf("Booking %d not found: %v", bookingID, err)
-		c.JSON(http.StatusNotFound, gin.H{"error": "Booking not found"})
-		return
-	}
-
-	if booking.UserID != userID {
-		c.JSON(http.StatusForbidden, gin.H{"error": "You can only cancel your own bookings"})
-		return
-	}
-
-	err = h.repo.CancelBooking(bookingID)
+	ctx := c.Request.Context()
+	err = h.service.CancelBooking(ctx, userID, bookingID)
 	if err != nil {
 		logger.Errorf("Failed to cancel booking %d: %v", bookingID, err)
-		if err == ErrBookingNotFoundOrAlreadyCancelled {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Booking not found or already cancelled"})
-			return
+		switch err.Error() {
+		case "booking not found":
+			c.JSON(http.StatusNotFound, api.ErrorResponse{Error: "Booking not found"})
+		case "unauthorized: can only cancel own bookings":
+			c.JSON(http.StatusForbidden, api.ErrorResponse{Error: "You can only cancel your own bookings"})
+		default:
+			c.JSON(http.StatusInternalServerError, api.ErrorResponse{Error: "Failed to cancel booking"})
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to cancel booking"})	
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "Booking cancelled successfully"})
+	c.JSON(http.StatusOK, CancelBookingResponse{Message: "Booking cancelled successfully"})
 	metrics.RecordBookingCancellation()
 }
 
+// @Summary      List my bookings
+// @Tags         bookings
+// @Produce      json
+// @Security     BearerAuth
+// @Success      200 {array} booking.Booking
+// @Failure      401 {object} api.ErrorResponse
+// @Failure      500 {object} api.ErrorResponse
+// @Router       /bookings [get]
 func (h *Handler) ListMyBookings(c *gin.Context) {
 	userID, exists := auth.GetUserID(c)
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+		c.JSON(http.StatusUnauthorized, api.ErrorResponse{Error: "User not authenticated"})
 		return
 	}
 
-	bookings, err := h.repo.GetUserBookings(userID)
+	ctx := c.Request.Context()
+	bookings, err := h.service.GetUserBookings(ctx, userID)
 	if err != nil {
 		logger.Errorf("Failed to fetch bookings for user %d: %v", userID, err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch bookings"})
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Error: "Failed to fetch bookings"})
 		return
 	}
 
 	c.JSON(http.StatusOK, bookings)
 }
 
+// @Summary      List bookings by time slot (admin)
+// @Tags         admin,bookings
+// @Produce      json
+// @Security     BearerAuth
+// @Param        slotID path int true "Time slot ID"
+// @Success      200 {array} booking.BookingWithDetails
+// @Failure      400 {object} api.ErrorResponse
+// @Failure      401 {object} api.ErrorResponse
+// @Failure      403 {object} api.ErrorResponse
+// @Failure      500 {object} api.ErrorResponse
+// @Router       /admin/slots/{slotID}/bookings [get]
 func (h *Handler) ListBookingsBySlot(c *gin.Context) {
 	slotIDStr := c.Param("slotID")
 	slotID, err := strconv.Atoi(slotIDStr)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid slot ID"})
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{Error: "Invalid slot ID"})
 		return
 	}
 
-	bookings, err := h.repo.GetBookingsByTimeSlot(slotID)
+	ctx := c.Request.Context()
+	bookings, err := h.service.GetBookingsByTimeSlot(ctx, slotID)
 	if err != nil {
 		logger.Errorf("Failed to fetch bookings for slot %d: %v", slotID, err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch bookings"})
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Error: "Failed to fetch bookings"})
 		return
 	}
 
 	c.JSON(http.StatusOK, bookings)
 }
 
+// @Summary      List bookings by gym (admin)
+// @Tags         admin,bookings
+// @Produce      json
+// @Security     BearerAuth
+// @Param        gymID path int true "Gym ID"
+// @Success      200 {array} booking.BookingWithDetails
+// @Failure      400 {object} api.ErrorResponse
+// @Failure      401 {object} api.ErrorResponse
+// @Failure      403 {object} api.ErrorResponse
+// @Failure      500 {object} api.ErrorResponse
+// @Router       /admin/gyms/{gymID}/bookings [get]
 func (h *Handler) ListBookingsByGym(c *gin.Context) {
 	gymIDStr := c.Param("gymID")
 	gymID, err := strconv.Atoi(gymIDStr)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid gym ID"})
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{Error: "Invalid gym ID"})
 		return
 	}
 
-	bookings, err := h.repo.GetBookingsByGym(gymID)
+	ctx := c.Request.Context()
+	bookings, err := h.service.GetBookingsByGym(ctx, gymID)
 	if err != nil {
 		logger.Errorf("Failed to fetch bookings for gym %d: %v", gymID, err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch bookings"})
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Error: "Failed to fetch bookings"})
 		return
 	}
 

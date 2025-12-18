@@ -1,6 +1,7 @@
 package booking
 
 import (
+	"context"
 	"errors"
 
 	"github.com/jmoiron/sqlx"
@@ -8,15 +9,15 @@ import (
 
 var ErrBookingNotFoundOrAlreadyCancelled = errors.New("booking not found or already cancelled")
 
-type Repository struct {
+type repository struct {
 	db *sqlx.DB
 }
 
-func NewRepository(db *sqlx.DB) *Repository {
-	return &Repository{db: db}
+func NewRepository(db *sqlx.DB) Repository {
+	return &repository{db: db}
 }
 
-func (r *Repository) CreateBooking(userID, timeSlotID int) (*Booking, error) {
+func (r *repository) CreateBooking(ctx context.Context, userID, timeSlotID int) (*Booking, error) {
 	query := `
 		INSERT INTO bookings (user_id, time_slot_id, status)
 		VALUES ($1, $2, 'booked')
@@ -24,7 +25,7 @@ func (r *Repository) CreateBooking(userID, timeSlotID int) (*Booking, error) {
 	`
 
 	var booking Booking
-	err := r.db.Get(&booking, query, userID, timeSlotID)
+	err := r.db.GetContext(ctx, &booking, query, userID, timeSlotID)
 	if err != nil {
 		return nil, err
 	}
@@ -32,7 +33,7 @@ func (r *Repository) CreateBooking(userID, timeSlotID int) (*Booking, error) {
 	return &booking, nil
 }
 
-func (r *Repository) GetBookingByID(id int) (*Booking, error) {
+func (r *repository) GetBookingByID(ctx context.Context, id int) (*Booking, error) {
 	query := `
 		SELECT id, user_id, time_slot_id, status, created_at
 		FROM bookings
@@ -40,7 +41,7 @@ func (r *Repository) GetBookingByID(id int) (*Booking, error) {
 	`
 
 	var booking Booking
-	err := r.db.Get(&booking, query, id)
+	err := r.db.GetContext(ctx, &booking, query, id)
 	if err != nil {
 		return nil, err
 	}
@@ -48,14 +49,14 @@ func (r *Repository) GetBookingByID(id int) (*Booking, error) {
 	return &booking, nil
 }
 
-func (r *Repository) CancelBooking(id int) error {
+func (r *repository) CancelBooking(ctx context.Context, id int) error {
 	query := `
 		UPDATE bookings
 		SET status = 'cancelled'
 		WHERE id = $1 AND status = 'booked'
 	`
 
-	result, err := r.db.Exec(query, id)
+	result, err := r.db.ExecContext(ctx, query, id)
 	if err != nil {
 		return err
 	}
@@ -72,7 +73,7 @@ func (r *Repository) CancelBooking(id int) error {
 	return nil
 }
 
-func (r *Repository) CountActiveBookingsForSlot(timeSlotID int) (int, error) {
+func (r *repository) CountActiveBookingsForSlot(ctx context.Context, timeSlotID int) (int, error) {
 	query := `
 		SELECT COUNT(*)
 		FROM bookings
@@ -80,7 +81,7 @@ func (r *Repository) CountActiveBookingsForSlot(timeSlotID int) (int, error) {
 	`
 
 	var count int
-	err := r.db.Get(&count, query, timeSlotID)
+	err := r.db.GetContext(ctx, &count, query, timeSlotID)
 	if err != nil {
 		return 0, err
 	}
@@ -88,7 +89,7 @@ func (r *Repository) CountActiveBookingsForSlot(timeSlotID int) (int, error) {
 	return count, nil
 }
 
-func (r *Repository) UserHasBookingForSlot(userID, timeSlotID int) (bool, error) {
+func (r *repository) UserHasBookingForSlot(ctx context.Context, userID, timeSlotID int) (bool, error) {
 	query := `
 		SELECT EXISTS(
 			SELECT 1 FROM bookings
@@ -97,7 +98,7 @@ func (r *Repository) UserHasBookingForSlot(userID, timeSlotID int) (bool, error)
 	`
 
 	var exists bool
-	err := r.db.Get(&exists, query, userID, timeSlotID)
+	err := r.db.GetContext(ctx, &exists, query, userID, timeSlotID)
 	if err != nil {
 		return false, err
 	}
@@ -105,7 +106,7 @@ func (r *Repository) UserHasBookingForSlot(userID, timeSlotID int) (bool, error)
 	return exists, nil
 }
 
-func (r *Repository) GetUserBookings(userID int) ([]Booking, error) {
+func (r *repository) GetUserBookings(ctx context.Context, userID int) ([]Booking, error) {
 	query := `
 		SELECT id, user_id, time_slot_id, status, created_at
 		FROM bookings
@@ -114,7 +115,7 @@ func (r *Repository) GetUserBookings(userID int) ([]Booking, error) {
 	`
 
 	var bookings []Booking
-	err := r.db.Select(&bookings, query, userID)
+	err := r.db.SelectContext(ctx, &bookings, query, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -122,7 +123,7 @@ func (r *Repository) GetUserBookings(userID int) ([]Booking, error) {
 	return bookings, nil
 }
 
-func (r *Repository) GetBookingsByTimeSlot(timeSlotID int) ([]BookingWithDetails, error) {
+func (r *repository) GetBookingsByTimeSlot(ctx context.Context, timeSlotID int) ([]BookingWithDetails, error) {
 	query := `
 		SELECT 
 			b.id,
@@ -145,7 +146,7 @@ func (r *Repository) GetBookingsByTimeSlot(timeSlotID int) ([]BookingWithDetails
 	`
 
 	var bookings []BookingWithDetails
-	err := r.db.Select(&bookings, query, timeSlotID)
+	err := r.db.SelectContext(ctx, &bookings, query, timeSlotID)
 	if err != nil {
 		return nil, err
 	}
@@ -153,7 +154,7 @@ func (r *Repository) GetBookingsByTimeSlot(timeSlotID int) ([]BookingWithDetails
 	return bookings, nil
 }
 
-func (r *Repository) GetBookingsByGym(gymID int) ([]BookingWithDetails, error) {
+func (r *repository) GetBookingsByGym(ctx context.Context, gymID int) ([]BookingWithDetails, error) {
 	query := `
 		SELECT 
 			b.id,
@@ -176,7 +177,7 @@ func (r *Repository) GetBookingsByGym(gymID int) ([]BookingWithDetails, error) {
 	`
 
 	var bookings []BookingWithDetails
-	err := r.db.Select(&bookings, query, gymID)
+	err := r.db.SelectContext(ctx, &bookings, query, gymID)
 	if err != nil {
 		return nil, err
 	}

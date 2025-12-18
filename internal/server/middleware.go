@@ -17,7 +17,7 @@ func MetricsMiddleware() gin.HandlerFunc {
 
 		duration := time.Since(start).Seconds()
 		status := strconv.Itoa(c.Writer.Status())
-		
+
 		metrics.RecordHTTPRequest(
 			c.Request.Method,
 			c.FullPath(),

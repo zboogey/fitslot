@@ -1,0 +1,1103 @@
+basePath: /
+definitions:
+  api.ErrorResponse:
+    properties:
+      error:
+        example: something went wrong
+        type: string
+    type: object
+  api.HealthResponse:
+    properties:
+      status:
+        example: ok
+        type: string
+    type: object
+  api.MessageResponse:
+    properties:
+      message:
+        example: ok
+        type: string
+    type: object
+  booking.BookSlotResponse:
+    properties:
+      amount_cents:
+        example: 1000
+        type: integer
+      booking:
+        $ref: '#/definitions/booking.Booking'
+      paid_with:
+        example: wallet
+        type: string
+      subscription:
+        $ref: '#/definitions/subscription.Subscription'
+    type: object
+  booking.Booking:
+    properties:
+      created_at:
+        type: string
+      id:
+        type: integer
+      status:
+        type: string
+      time_slot_id:
+        type: integer
+      user_id:
+        type: integer
+    type: object
+  booking.BookingWithDetails:
+    properties:
+      created_at:
+        type: string
+      gym_location:
+        type: string
+      gym_name:
+        type: string
+      id:
+        type: integer
+      status:
+        type: string
+      time_slot_end:
+        type: string
+      time_slot_id:
+        type: integer
+      time_slot_start:
+        type: string
+      user_email:
+        type: string
+      user_id:
+        type: integer
+      user_name:
+        type: string
+    type: object
+  booking.CancelBookingResponse:
+    properties:
+      message:
+        example: Booking cancelled successfully
+        type: string
+    type: object
+  gym.CreateGymRequest:
+    properties:
+      location:
+        type: string
+      name:
+        type: string
+    required:
+    - location
+    - name
+    type: object
+  gym.CreateTimeSlotRequest:
+    properties:
+      capacity:
+        minimum: 1
+        type: integer
+      end_time:
+        type: string
+      start_time:
+        type: string
+    required:
+    - capacity
+    - end_time
+    - start_time
+    type: object
+  gym.Gym:
+    properties:
+      created_at:
+        type: string
+      id:
+        type: integer
+      location:
+        type: string
+      name:
+        type: string
+    type: object
+  gym.TimeSlot:
+    properties:
+      capacity:
+        type: integer
+      created_at:
+        type: string
+      end_time:
+        type: string
+      gym_id:
+        type: integer
+      id:
+        type: integer
+      start_time:
+        type: string
+    type: object
+  gym.TimeSlotWithAvailability:
+    properties:
+      available:
+        type: integer
+      booked_count:
+        type: integer
+      capacity:
+        type: integer
+      created_at:
+        type: string
+      end_time:
+        type: string
+      gym_id:
+        type: integer
+      id:
+        type: integer
+      is_full:
+        type: boolean
+      start_time:
+        type: string
+    type: object
+  subscription.CreateSubscriptionRequest:
+    properties:
+      gym_id:
+        type: integer
+      type:
+        type: string
+    required:
+    - type
+    type: object
+  subscription.CreateSubscriptionResponse:
+    properties:
+      amount_cents:
+        type: integer
+      paid_with:
+        type: string
+      subscription:
+        $ref: '#/definitions/subscription.Subscription'
+    type: object
+  subscription.Plan:
+    properties:
+      description:
+        type: string
+      gym_required:
+        type: boolean
+      name:
+        type: string
+      price_cents:
+        type: integer
+      type:
+        type: string
+      visits_limit:
+        type: integer
+    type: object
+  subscription.Subscription:
+    properties:
+      created_at:
+        type: string
+      currency:
+        type: string
+      gym_id:
+        type: integer
+      id:
+        type: integer
+      period:
+        type: string
+      price_cents:
+        type: integer
+      status:
+        $ref: '#/definitions/subscription.SubscriptionStatus'
+      type:
+        $ref: '#/definitions/subscription.SubscriptionType'
+      updated_at:
+        type: string
+      user_id:
+        type: integer
+      valid_from:
+        type: string
+      valid_until:
+        type: string
+      visits_limit:
+        type: integer
+      visits_used:
+        type: integer
+    type: object
+  subscription.SubscriptionStatus:
+    enum:
+    - active
+    - expired
+    - cancelled
+    type: string
+    x-enum-varnames:
+    - StatusActive
+    - StatusExpired
+    - StatusCanceled
+  subscription.SubscriptionType:
+    enum:
+    - single_gym_lite
+    - multi_gym_flex
+    - unlimited_pro
+    type: string
+    x-enum-varnames:
+    - TypeSingleGymLite
+    - TypeMultiGymFlex
+    - TypeUnlimitedPro
+  user.LoginRequest:
+    properties:
+      email:
+        type: string
+      password:
+        type: string
+    required:
+    - email
+    - password
+    type: object
+  user.LoginResponse:
+    properties:
+      access_token:
+        type: string
+      refresh_token:
+        type: string
+      user:
+        $ref: '#/definitions/user.User'
+    type: object
+  user.RefreshTokenRequest:
+    properties:
+      refresh_token:
+        type: string
+    required:
+    - refresh_token
+    type: object
+  user.RefreshTokenResponse:
+    properties:
+      access_token:
+        type: string
+      user:
+        $ref: '#/definitions/user.User'
+    type: object
+  user.RegisterRequest:
+    properties:
+      email:
+        type: string
+      name:
+        type: string
+      password:
+        minLength: 6
+        type: string
+    required:
+    - email
+    - name
+    - password
+    type: object
+  user.User:
+    properties:
+      created_at:
+        type: string
+      email:
+        type: string
+      id:
+        type: integer
+      name:
+        type: string
+      role:
+        type: string
+    type: object
+  wallet.TopUpRequest:
+    properties:
+      amount_cents:
+        type: integer
+    required:
+    - amount_cents
+    type: object
+  wallet.TopUpResponse:
+    properties:
+      message:
+        example: wallet recharged
+        type: string
+      wallet:
+        $ref: '#/definitions/wallet.Wallet'
+    type: object
+  wallet.Transaction:
+    properties:
+      amount_cents:
+        type: integer
+      balance_after:
+        type: integer
+      created_at:
+        type: string
+      id:
+        type: integer
+      type:
+        description: topup, booking_payment, subscription_payment, refund и т.п.
+        type: string
+      wallet_id:
+        type: integer
+    type: object
+  wallet.Wallet:
+    properties:
+      balance_cents:
+        type: integer
+      created_at:
+        type: string
+      currency:
+        type: string
+      id:
+        type: integer
+      updated_at:
+        type: string
+      user_id:
+        type: integer
+    type: object
+host: localhost:8080
+info:
+  contact: {}
+  description: API for gym slot booking system.
+  title: FitSlot API
+  version: "1.0"
+paths:
+  /admin/gyms:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/gym.Gym'
+            type: array
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List gyms
+      tags:
+      - gyms
+      - admin
+    post:
+      consumes:
+      - application/json
+      description: 'Admin-only: create a new gym'
+      parameters:
+      - description: Gym payload
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/gym.CreateGymRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/gym.Gym'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Create a gym
+      tags:
+      - admin
+      - gyms
+  /admin/gyms/{gymID}/bookings:
+    get:
+      parameters:
+      - description: Gym ID
+        in: path
+        name: gymID
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/booking.BookingWithDetails'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List bookings by gym (admin)
+      tags:
+      - admin
+      - bookings
+  /admin/gyms/{gymID}/slots:
+    get:
+      parameters:
+      - description: Gym ID
+        in: path
+        name: gymID
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/gym.TimeSlotWithAvailability'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List time slots for a gym
+      tags:
+      - gyms
+      - admin
+    post:
+      consumes:
+      - application/json
+      description: 'Admin-only: create a time slot for a gym'
+      parameters:
+      - description: Gym ID
+        in: path
+        name: gymID
+        required: true
+        type: integer
+      - description: Time slot payload
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/gym.CreateTimeSlotRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/gym.TimeSlot'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Create a time slot
+      tags:
+      - admin
+      - gyms
+  /admin/slots/{slotID}/bookings:
+    get:
+      parameters:
+      - description: Time slot ID
+        in: path
+        name: slotID
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/booking.BookingWithDetails'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List bookings by time slot (admin)
+      tags:
+      - admin
+      - bookings
+  /auth/login:
+    post:
+      consumes:
+      - application/json
+      description: Login with email and password to receive access/refresh tokens
+      parameters:
+      - description: Login payload
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/user.LoginRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/user.LoginResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      summary: Login
+      tags:
+      - auth
+  /auth/refresh:
+    post:
+      consumes:
+      - application/json
+      description: Exchange a refresh token for a new access token
+      parameters:
+      - description: Refresh token payload
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/user.RefreshTokenRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/user.RefreshTokenResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      summary: Refresh access token
+      tags:
+      - auth
+  /auth/register:
+    post:
+      consumes:
+      - application/json
+      description: Register a new user (member role by default) and return access/refresh
+        tokens
+      parameters:
+      - description: Register payload
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/user.RegisterRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/user.LoginResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      summary: Register user
+      tags:
+      - auth
+  /bookings:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/booking.Booking'
+            type: array
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List my bookings
+      tags:
+      - bookings
+  /bookings/{bookingID}/cancel:
+    post:
+      description: Cancel a booking owned by the current user
+      parameters:
+      - description: Booking ID
+        in: path
+        name: bookingID
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/booking.CancelBookingResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Cancel booking
+      tags:
+      - bookings
+  /gyms:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/gym.Gym'
+            type: array
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List gyms
+      tags:
+      - gyms
+      - admin
+  /gyms/{gymID}/slots:
+    get:
+      parameters:
+      - description: Gym ID
+        in: path
+        name: gymID
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/gym.TimeSlotWithAvailability'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List time slots for a gym
+      tags:
+      - gyms
+      - admin
+  /health:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.HealthResponse'
+      summary: Health check
+      tags:
+      - system
+  /me:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/user.User'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get current user
+      tags:
+      - users
+  /metrics:
+    get:
+      description: Exposes Prometheus metrics in text format
+      produces:
+      - text/plain
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: string
+      summary: Prometheus metrics
+      tags:
+      - system
+  /slots/{slotID}/book:
+    post:
+      description: Create a booking for the current user (paid with wallet or subscription)
+      parameters:
+      - description: Time slot ID
+        in: path
+        name: slotID
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/booking.BookSlotResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "402":
+          description: Payment Required
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Book a time slot
+      tags:
+      - bookings
+  /subscriptions:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/subscription.Subscription'
+            type: array
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List my subscriptions
+      tags:
+      - subscriptions
+    post:
+      consumes:
+      - application/json
+      description: Purchase a subscription plan using wallet balance
+      parameters:
+      - description: Subscription purchase payload
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/subscription.CreateSubscriptionRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/subscription.CreateSubscriptionResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "402":
+          description: Payment Required
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Create subscription
+      tags:
+      - subscriptions
+  /subscriptions/plans:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/subscription.Plan'
+            type: array
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List subscription plans
+      tags:
+      - subscriptions
+  /test-email:
+    get:
+      parameters:
+      - description: Recipient email
+        in: query
+        name: email
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.MessageResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      summary: Queue a test email
+      tags:
+      - system
+  /wallet:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/wallet.Wallet'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get wallet balance
+      tags:
+      - wallet
+  /wallet/topup:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Top up payload
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/wallet.TopUpRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/wallet.TopUpResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Top up wallet
+      tags:
+      - wallet
+  /wallet/transactions:
+    get:
+      parameters:
+      - default: 50
+        description: Limit
+        in: query
+        name: limit
+        type: integer
+      - default: 0
+        description: Offset
+        in: query
+        name: offset
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/wallet.Transaction'
+            type: array
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List wallet transactions
+      tags:
+      - wallet
+securityDefinitions:
+  BearerAuth:
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"

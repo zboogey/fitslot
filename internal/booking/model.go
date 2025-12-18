@@ -1,6 +1,10 @@
 package booking
 
-import "time"
+import (
+	"time"
+
+	"fitslot/internal/subscription"
+)
 
 type Booking struct {
 	ID         int       `db:"id" json:"id"`
@@ -12,11 +16,21 @@ type Booking struct {
 
 type BookingWithDetails struct {
 	Booking
-	TimeSlotStart time.Time `json:"time_slot_start"`
-	TimeSlotEnd   time.Time `json:"time_slot_end"`
-	GymName       string    `json:"gym_name"`
-	GymLocation   string    `json:"gym_location"`
-	UserName      string    `json:"user_name"`
-	UserEmail     string    `json:"user_email"`
+	TimeSlotStart time.Time `db:"time_slot_start" json:"time_slot_start"`
+	TimeSlotEnd   time.Time `db:"time_slot_end" json:"time_slot_end"`
+	GymName       string    `db:"gym_name" json:"gym_name"`
+	GymLocation   string    `db:"gym_location" json:"gym_location"`
+	UserName      string    `db:"user_name" json:"user_name"`
+	UserEmail     string    `db:"user_email" json:"user_email"`
 }
 
+type BookSlotResponse struct {
+	Booking      *Booking                    `json:"booking"`
+	PaidWith     string                      `json:"paid_with" example:"wallet"`
+	AmountCents  *int64                      `json:"amount_cents,omitempty" example:"1000"`
+	Subscription *subscription.Subscription  `json:"subscription,omitempty"`
+}
+
+type CancelBookingResponse struct {
+	Message string `json:"message" example:"Booking cancelled successfully"`
+}

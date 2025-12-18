@@ -1,20 +1,21 @@
 package gym
 
 import (
+	"context"
 	"time"
 
 	"github.com/jmoiron/sqlx"
 )
 
-type Repository struct {
+type repository struct {
 	db *sqlx.DB
 }
 
-func NewRepository(db *sqlx.DB) *Repository {
-	return &Repository{db: db}
+func NewRepository(db *sqlx.DB) Repository {
+	return &repository{db: db}
 }
 
-func (r *Repository) CreateGym(name, location string) (*Gym, error) {
+func (r *repository) CreateGym(ctx context.Context, name, location string) (*Gym, error) {
 	query := `
 		INSERT INTO gyms (name, location)
 		VALUES ($1, $2)
@@ -22,7 +23,7 @@ func (r *Repository) CreateGym(name, location string) (*Gym, error) {
 	`
 
 	var gym Gym
-	err := r.db.Get(&gym, query, name, location)
+	err := r.db.GetContext(ctx, &gym, query, name, location)
 	if err != nil {
 		return nil, err
 	}
@@ -30,7 +31,7 @@ func (r *Repository) CreateGym(name, location string) (*Gym, error) {
 	return &gym, nil
 }
 
-func (r *Repository) GetAllGyms() ([]Gym, error) {
+func (r *repository) GetAllGyms(ctx context.Context) ([]Gym, error) {
 	query := `
 		SELECT id, name, location, created_at
 		FROM gyms
@@ -38,7 +39,7 @@ func (r *Repository) GetAllGyms() ([]Gym, error) {
 	`
 
 	var gyms []Gym
-	err := r.db.Select(&gyms, query)
+	err := r.db.SelectContext(ctx, &gyms, query)
 	if err != nil {
 		return nil, err
 	}
@@ -46,7 +47,7 @@ func (r *Repository) GetAllGyms() ([]Gym, error) {
 	return gyms, nil
 }
 
-func (r *Repository) GetGymByID(id int) (*Gym, error) {
+func (r *repository) GetGymByID(ctx context.Context, id int) (*Gym, error) {
 	query := `
 		SELECT id, name, location, created_at
 		FROM gyms
@@ -54,7 +55,7 @@ func (r *Repository) GetGymByID(id int) (*Gym, error) {
 	`
 
 	var gym Gym
-	err := r.db.Get(&gym, query, id)
+	err := r.db.GetContext(ctx, &gym, query, id)
 	if err != nil {
 		return nil, err
 	}
@@ -62,7 +63,7 @@ func (r *Repository) GetGymByID(id int) (*Gym, error) {
 	return &gym, nil
 }
 
-func (r *Repository) CreateTimeSlot(gymID int, startTime, endTime time.Time, capacity int) (*TimeSlot, error) {
+func (r *repository) CreateTimeSlot(ctx context.Context, gymID int, startTime, endTime time.Time, capacity int) (*TimeSlot, error) {
 	query := `
 		INSERT INTO time_slots (gym_id, start_time, end_time, capacity)
 		VALUES ($1, $2, $3, $4)
@@ -70,7 +71,7 @@ func (r *Repository) CreateTimeSlot(gymID int, startTime, endTime time.Time, cap
 	`
 
 	var slot TimeSlot
-	err := r.db.Get(&slot, query, gymID, startTime, endTime, capacity)
+	err := r.db.GetContext(ctx, &slot, query, gymID, startTime, endTime, capacity)
 	if err != nil {
 		return nil, err
 	}
@@ -78,7 +79,7 @@ func (r *Repository) CreateTimeSlot(gymID int, startTime, endTime time.Time, cap
 	return &slot, nil
 }
 
-func (r *Repository) GetTimeSlotsByGym(gymID int, onlyFuture bool) ([]TimeSlot, error) {
+func (r *repository) GetTimeSlotsByGym(ctx context.Context, gymID int, onlyFuture bool) ([]TimeSlot, error) {
 	query := `
 		SELECT id, gym_id, start_time, end_time, capacity, created_at
 		FROM time_slots
@@ -93,7 +94,7 @@ func (r *Repository) GetTimeSlotsByGym(gymID int, onlyFuture bool) ([]TimeSlot, 
 	query += " ORDER BY start_time ASC"
 
 	var slots []TimeSlot
-	err := r.db.Select(&slots, query, args...)
+	err := r.db.SelectContext(ctx, &slots, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -101,7 +102,7 @@ func (r *Repository) GetTimeSlotsByGym(gymID int, onlyFuture bool) ([]TimeSlot, 
 	return slots, nil
 }
 
-func (r *Repository) GetTimeSlotByID(id int) (*TimeSlot, error) {
+func (r *repository) GetTimeSlotByID(ctx context.Context, id int) (*TimeSlot, error) {
 	query := `
 		SELECT id, gym_id, start_time, end_time, capacity, created_at
 		FROM time_slots
@@ -109,7 +110,7 @@ func (r *Repository) GetTimeSlotByID(id int) (*TimeSlot, error) {
 	`
 
 	var slot TimeSlot
-	err := r.db.Get(&slot, query, id)
+	err := r.db.GetContext(ctx, &slot, query, id)
 	if err != nil {
 		return nil, err
 	}
@@ -117,9 +118,9 @@ func (r *Repository) GetTimeSlotByID(id int) (*TimeSlot, error) {
 	return &slot, nil
 }
 
-func (r *Repository) GetTimeSlotsWithAvailability(gymID int, onlyFuture bool) ([]TimeSlotWithAvailability, error) {
+func (r *repository) GetTimeSlotsWithAvailability(ctx context.Context, gymID int, onlyFuture bool) ([]TimeSlotWithAvailability, error) {
 
-	slots, err := r.GetTimeSlotsByGym(gymID, onlyFuture)
+	slots, err := r.GetTimeSlotsByGym(ctx, gymID, onlyFuture)
 	if err != nil {
 		return nil, err
 	}
@@ -132,7 +133,7 @@ func (r *Repository) GetTimeSlotsWithAvailability(gymID int, onlyFuture bool) ([
 			FROM bookings
 			WHERE time_slot_id = $1 AND status = 'booked'
 		`
-		err := r.db.Get(&bookedCount, countQuery, slot.ID)
+		err := r.db.GetContext(ctx, &bookedCount, countQuery, slot.ID)
 		if err != nil {
 			return nil, err
 		}
@@ -150,4 +151,5 @@ func (r *Repository) GetTimeSlotsWithAvailability(gymID int, onlyFuture bool) ([
 
 	return result, nil
 }
+
 

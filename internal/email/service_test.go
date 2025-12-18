@@ -2,8 +2,6 @@ package email
 
 import (
 	"context"
-	"io"
-	"log"
 	"os"
 	"testing"
 	"time"
@@ -15,14 +13,9 @@ import (
 	"fitslot/internal/logger"
 )
 
-// TestMain запускается перед всеми тестами
 func TestMain(m *testing.M) {
-	// Инициализируем логгер для тестов (отправляем логи в никуда)
-	logger.InfoLogger = log.New(io.Discard, "", 0)
-	logger.ErrorLogger = log.New(io.Discard, "", 0)
-	logger.DebugLogger = log.New(io.Discard, "", 0)
+	logger.Init()
 
-	// Запускаем тесты
 	code := m.Run()
 	os.Exit(code)
 }
