@@ -28,7 +28,6 @@ var (
 )
 
 func setupTestDB(t *testing.T) *sqlx.DB {
-	// Allow overriding the DSN via TEST_DSN env var for running tests inside Docker
 	dsn := os.Getenv("TEST_DSN")
 	if dsn == "" {
 		dsn = "postgres://testuser:testpass@localhost:5433/fitslot_test?sslmode=disable"
@@ -250,7 +249,7 @@ func TestBookSlotIntegration(t *testing.T) {
 		router.ServeHTTP(w1, req1)
 		assert.Equal(t, http.StatusCreated, w1.Code)
 		
-		// Second user tries to book (should fail)
+
 		token2 := generateTestToken(user2ID, "user2@example.com", "user", "test-secret")
 		req2 := httptest.NewRequest("POST", fmt.Sprintf("/bookings/%d", slotID), nil)
 		req2.Header.Set("Authorization", "Bearer "+token2)
@@ -279,7 +278,7 @@ func TestBookSlotIntegration(t *testing.T) {
 		router.ServeHTTP(w1, req1)
 		assert.Equal(t, http.StatusCreated, w1.Code)
 		
-		// Second booking (should fail)
+
 		req2 := httptest.NewRequest("POST", fmt.Sprintf("/bookings/%d", slotID), nil)
 		req2.Header.Set("Authorization", "Bearer "+token)
 		w2 := httptest.NewRecorder()
@@ -296,7 +295,7 @@ func TestBookSlotIntegration(t *testing.T) {
 		gymID := createTestGym(t, db, "Test Gym")
 		futureTime := time.Now().Add(24 * time.Hour)
 		slotID := createTestTimeSlot(t, db, gymID, futureTime, 10)
-		addWalletBalance(t, db, userID, 500) // Only 5.00, need 10.00
+		addWalletBalance(t, db, userID, 500)
 		
 		token := generateTestToken(userID, "user@example.com", "user", "test-secret")
 		
